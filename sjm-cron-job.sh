@@ -11,13 +11,6 @@
 # License: MIT
 # -----------------------------------------------------
 
-# run as root if the docker group has not yet been added to your user
-# https://docs.docker.com/engine/install/linux-postinstall/
-# if [[ $EUID -ne 0 ]]; then
-#   echo "This script must be run as root"
-#   exit 1
-# fi
-
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
   # stop all containers (assuming this host is dedicated to the SJM)
