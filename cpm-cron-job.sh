@@ -37,4 +37,4 @@ stop_and_prune_containers
 
 # start new job manager to support monitoring activities
 # avoid using sudo with the docker run command since containers spawned by the minion won't inherit elevated permissions
-docker run --name=YOUR_MINION_NAME -e MINION_PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -d --restart unless-stopped -v /tmp:/tmp:rw -v /var/run/docker.sock:/var/run/docker.sock:rw quay.io/newrelic/synthetics-minion:latest
+docker run --name=YOUR_MINION_NAME -e MINION_PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -v /tmp:/tmp:rw -v /var/run/docker.sock:/var/run/docker.sock:rw -d --restart unless-stopped quay.io/newrelic/synthetics-minion:latest
