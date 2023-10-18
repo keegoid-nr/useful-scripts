@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------
 # CPM Cron Job
-# Helps to keep docker clean and the SJM updated.
-# Can also be used to start the SJM.
+# Helps to keep docker clean and the CPM updated.
+# Can also be used to start the CPM.
 #
 # Author : Keegan Mullaney
 # Company: New Relic
