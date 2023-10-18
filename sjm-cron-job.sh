@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # -----------------------------------------------------
 # SJM Cron Job
 # Helps to keep docker clean and the SJM updated.
@@ -11,21 +11,25 @@
 # License: MIT
 # -----------------------------------------------------
 
-# A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
+# A function to stop and delete all synthetics containers and images, plus prune volumes and networks not in use.
 function stop_and_prune_containers {
-  # stop all containers (assuming this host is dedicated to the SJM)
-  docker stop $(docker ps -aq) 2>/dev/null
+  # stop and delete all containers related to New Relic Synthetics
+  for i in $(docker inspect --format="{{.ID}} {{.Config.Image}}" $(docker ps -aq) | grep "newrelic/synthetics" | awk '{print $1}'); do
+    docker stop "$i" 2>/dev/null
+    docker rm -f "$i" 2>/dev/null
+  done
 
-  # prune containers, images, and networks not in use
-  docker system prune -af
+  # remove all synthetics-related images
+  docker image rm -f $(docker images | grep "newrelic/synthetics" | awk '{print $1}')
 
-  # check if any containers still exist
-  if [ "$(docker ps -aq)" ]; then
-    stop_and_prune_containers # recursively call function until no containers exist
-  fi
+  # prune unused Docker volumes
+  docker volume prune -af
+
+  # prune unused networks
+  docker network prune -f
 }
 
-# stop and prune all containers until none exist
+# stop and prune all containers
 stop_and_prune_containers
 
 # start new job manager to support monitoring activities
