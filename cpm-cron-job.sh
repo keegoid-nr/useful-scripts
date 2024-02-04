@@ -38,4 +38,5 @@ stop_and_prune_containers
 # start a new minion to support monitoring activities
 # avoid using sudo with the docker run command since containers spawned by the minion won't inherit elevated permissions
 # the log-opt tag will make it easier to find container logs if forwarding to New Relic
-docker run --name YOUR_CONTAINER_NAME -e MINION_PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -v /tmp:/tmp:rw -v /var/run/docker.sock:/var/run/docker.sock:rw -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" quay.io/newrelic/synthetics-minion:latest | tee -a docker-run.log 2>&1
+# 8080 and 8180 expose admin endpoints like :8080/status/check and :8180/healthcheck?pretty=true
+docker run --name YOUR_CONTAINER_NAME -e MINION_PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -v /tmp:/tmp:rw -v /var/run/docker.sock:/var/run/docker.sock:rw -p 8080:8080 -p 8180:8180 -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" quay.io/newrelic/synthetics-minion:latest | tee -a docker-run.log 2>&1

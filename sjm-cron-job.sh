@@ -30,4 +30,6 @@ stop_and_prune_containers
 
 # start new job manager to support monitoring activities
 # avoid using sudo with the docker run command since containers spawned by the job manager won't inherit elevated permissions
-docker run --name YOUR_CONTAINER_NAME -e PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -v /var/run/docker.sock:/var/run/docker.sock:rw -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" newrelic/synthetics-job-manager:latest | tee -a docker-run.log 2>&1
+# the log-opt tag will make it easier to find container logs if forwarding to New Relic
+# ports 8080 and 8082 expose admin endpoints like :8080/status/check and :8082/healthcheck?pretty=true
+docker run --name YOUR_CONTAINER_NAME -e PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -v /var/run/docker.sock:/var/run/docker.sock:rw -p 8080:8080 -p 8082:8082 -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" newrelic/synthetics-job-manager:latest | tee -a docker-run.log 2>&1
