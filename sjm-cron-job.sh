@@ -11,10 +11,14 @@
 # License: MIT
 # -----------------------------------------------------
 
-# Global variables (edit these variables before running the script)
-CONTAINER_NAME="YOUR_CONTAINER_NAME"
-PRIVATE_LOCATION_KEY="YOUR_PRIVATE_LOCATION_KEY"
+# Default values for global variables
+DEFAULT_CONTAINER_NAME="YOUR_CONTAINER_NAME"
+DEFAULT_PRIVATE_LOCATION_KEY="YOUR_PRIVATE_LOCATION_KEY"
 JOB_MANAGER_IMAGE="newrelic/synthetics-job-manager:latest"
+
+# Use provided command-line arguments or fallback to default values
+CONTAINER_NAME="${1:-$DEFAULT_CONTAINER_NAME}"
+PRIVATE_LOCATION_KEY="${2:-$DEFAULT_PRIVATE_LOCATION_KEY}"
 
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
