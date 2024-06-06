@@ -52,3 +52,10 @@ docker run --name $CONTAINER_NAME \
   -d --restart unless-stopped \
   --log-opt tag="{{.Name}}/{{.ID}}" \
   $JOB_MANAGER_IMAGE | tee -a docker-run.log 2>&1
+
+# This script can be run in one of two ways:
+  # 1. save it to a file and replace global variables with your values, or
+  # 2. run with curl and supply variables with command-line arguments
+
+# To run with curl:
+  # curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_PRIVATE_LOCATION_KEY"
