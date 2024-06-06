@@ -11,23 +11,22 @@
 # License: MIT
 # -----------------------------------------------------
 
+# Global variables (edit these variables before running the script)
+CONTAINER_NAME="YOUR_CONTAINER_NAME"
+PRIVATE_LOCATION_KEY="YOUR_PRIVATE_LOCATION_KEY"
+MINION_IMAGE="quay.io/newrelic/synthetics-minion:latest"
+
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
   local cnt=${1:-1} # Initialize counter or get it as an argument
   echo "recursive loop: $cnt"
 
-  # stop all containers (assuming this host is dedicated to the CPM)
-  # docker stop $(docker ps -aq) 2>/dev/null
-
   # stop only CPM-related containers
-  docker stop $(docker ps -qf 'label=name=synthetics-minion') 2>/dev/null
-  docker stop $(docker ps -qf 'label=name=synthetics-minion-runner') 2>/dev/null
+  docker stop $(docker ps -qf "label=name=synthetics-minion") 2>/dev/null
+  docker stop $(docker ps -qf "label=name=synthetics-minion-runner") 2>/dev/null
 
   # prune containers, images, and networks not in use
   docker system prune -af
-
-  # check if any containers still exist
-  # if [ "$(docker ps -aq)" ]; then
 
   # check if CPM-related containers still exist
   if [ "$(docker ps -qf 'label=name=synthetics-minion')" ] || [ "$(docker ps -qf 'label=name=synthetics-minion-runner')" ]; then
@@ -39,7 +38,12 @@ function stop_and_prune_containers {
 stop_and_prune_containers
 
 # start a new minion to support monitoring activities
-# avoid using sudo with the docker run command since containers spawned by the minion won't inherit elevated permissions
-# the log-opt tag will make it easier to find container logs if forwarding to New Relic
-# 8080 and 8180 expose admin endpoints like http://localhost:8080/status/check and http://localhost:8180/healthcheck?pretty=true
-docker run --name YOUR_CONTAINER_NAME -e MINION_PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY -v /tmp:/tmp:rw -v /var/run/docker.sock:/var/run/docker.sock:rw -p 8080:8080 -p 8180:8180 -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" quay.io/newrelic/synthetics-minion:latest | tee -a docker-run.log 2>&1
+docker run --name $CONTAINER_NAME \
+  -e MINION_PRIVATE_LOCATION_KEY=$PRIVATE_LOCATION_KEY \
+  -v /tmp:/tmp:rw \
+  -v /var/run/docker.sock:/var/run/docker.sock:rw \
+  -p 8080:8080 \
+  -p 8180:8180 \
+  -d --restart unless-stopped \
+  --log-opt tag="{{.Name}}/{{.ID}}" \
+  $MINION_IMAGE | tee -a docker-run.log 2>&1
