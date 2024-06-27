@@ -22,8 +22,8 @@ CPM_IMAGE="quay.io/newrelic/synthetics-minion:latest"
 # Use provided command-line arguments or fallback to default values
 SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
 SJM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
-CPM_CONTAINER_NAME="${1:-$DEFAULT_CPM_CONTAINER_NAME}"
-CPM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_CPM_PRIVATE_LOCATION_KEY}"
+CPM_CONTAINER_NAME="${3:-$DEFAULT_CPM_CONTAINER_NAME}"
+CPM_PRIVATE_LOCATION_KEY="${4:-$DEFAULT_CPM_PRIVATE_LOCATION_KEY}"
 
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
