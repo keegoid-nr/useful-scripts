@@ -1,7 +1,7 @@
 #!/bin/bash
 # -----------------------------------------------------
 # SJM Cron Job
-# Helps to keep docker clean and the SJM updated.
+# Helps to keep Docker clean and the SJM updated.
 # Can also be used to start the SJM.
 #
 # Author : Keegan Mullaney
@@ -12,13 +12,13 @@
 # -----------------------------------------------------
 
 # Default values for global variables
-DEFAULT_CONTAINER_NAME="YOUR_CONTAINER_NAME"
-DEFAULT_PRIVATE_LOCATION_KEY="YOUR_PRIVATE_LOCATION_KEY"
-JOB_MANAGER_IMAGE="newrelic/synthetics-job-manager:latest"
+DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
+DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
+SJM_IMAGE="newrelic/synthetics-job-manager:latest"
 
 # Use provided command-line arguments or fallback to default values
-CONTAINER_NAME="${1:-$DEFAULT_CONTAINER_NAME}"
-PRIVATE_LOCATION_KEY="${2:-$DEFAULT_PRIVATE_LOCATION_KEY}"
+SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
+SJM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
 
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
@@ -44,14 +44,14 @@ function stop_and_prune_containers {
 stop_and_prune_containers
 
 # start new job manager to support monitoring activities
-docker run --name $CONTAINER_NAME \
-  -e PRIVATE_LOCATION_KEY=$PRIVATE_LOCATION_KEY \
+docker run --name $SJM_CONTAINER_NAME \
+  -e PRIVATE_LOCATION_KEY=$SJM_PRIVATE_LOCATION_KEY \
   -v /var/run/docker.sock:/var/run/docker.sock:rw \
   -p 8080:8080 \
   -p 8082:8082 \
   -d --restart unless-stopped \
   --log-opt tag="{{.Name}}/{{.ID}}" \
-  $JOB_MANAGER_IMAGE | tee -a docker-run.log 2>&1
+  $SJM_IMAGE | tee -a docker-run.log 2>&1
 
 # This script can be run in one of two ways:
   # 1. save it to a file and replace global variables with your values, or

@@ -1,7 +1,7 @@
 #!/bin/bash
 # -----------------------------------------------------
 # CPM Cron Job
-# Helps to keep docker clean and the CPM updated.
+# Helps to keep Docker clean and the CPM updated.
 # Can also be used to start the CPM.
 #
 # Author : Keegan Mullaney
@@ -12,13 +12,13 @@
 # -----------------------------------------------------
 
 # Default values for global variables
-DEFAULT_CONTAINER_NAME="YOUR_CONTAINER_NAME"
-DEFAULT_PRIVATE_LOCATION_KEY="YOUR_PRIVATE_LOCATION_KEY"
-MINION_IMAGE="quay.io/newrelic/synthetics-minion:latest"
+DEFAULT_CPM_CONTAINER_NAME="YOUR_CONTAINER_NAME"
+DEFAULT_CPM_PRIVATE_LOCATION_KEY="YOUR_PRIVATE_LOCATION_KEY"
+CPM_IMAGE="quay.io/newrelic/synthetics-minion:latest"
 
 # Use provided command-line arguments or fallback to default values
-CONTAINER_NAME="${1:-$DEFAULT_CONTAINER_NAME}"
-PRIVATE_LOCATION_KEY="${2:-$DEFAULT_PRIVATE_LOCATION_KEY}"
+CPM_CONTAINER_NAME="${1:-$DEFAULT_CPM_CONTAINER_NAME}"
+CPM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_CPM_PRIVATE_LOCATION_KEY}"
 
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
@@ -42,15 +42,15 @@ function stop_and_prune_containers {
 stop_and_prune_containers
 
 # start a new minion to support monitoring activities
-docker run --name $CONTAINER_NAME \
-  -e MINION_PRIVATE_LOCATION_KEY=$PRIVATE_LOCATION_KEY \
+docker run --name $CPM_CONTAINER_NAME \
+  -e MINION_PRIVATE_LOCATION_KEY=$CPM_PRIVATE_LOCATION_KEY \
   -v /tmp:/tmp:rw \
   -v /var/run/docker.sock:/var/run/docker.sock:rw \
   -p 8080:8080 \
   -p 8180:8180 \
   -d --restart unless-stopped \
   --log-opt tag="{{.Name}}/{{.ID}}" \
-  $MINION_IMAGE | tee -a docker-run.log 2>&1
+  $CPM_IMAGE | tee -a docker-run.log 2>&1
 
 # This script can be run in one of two ways:
   # 1. save it to a file and replace global variables with your values, or

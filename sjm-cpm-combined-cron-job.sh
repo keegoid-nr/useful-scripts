@@ -11,6 +11,20 @@
 # License: MIT
 # -----------------------------------------------------
 
+# Default values for global variables
+DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
+DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
+DEFAULT_CPM_CONTAINER_NAME="YOUR_CPM_CONTAINER_NAME"
+DEFAULT_CPM_PRIVATE_LOCATION_KEY="YOUR_CPM_PRIVATE_LOCATION_KEY"
+SJM_IMAGE="newrelic/synthetics-job-manager:latest"
+CPM_IMAGE="quay.io/newrelic/synthetics-minion:latest"
+
+# Use provided command-line arguments or fallback to default values
+SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
+SJM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
+CPM_CONTAINER_NAME="${1:-$DEFAULT_CPM_CONTAINER_NAME}"
+CPM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_CPM_PRIVATE_LOCATION_KEY}"
+
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {
   local cnt=${1:-1} # Initialize counter or get it as an argument
@@ -42,15 +56,15 @@ docker network create cpm-bridge
 # set HEAVYWEIGHT_WORKERS to half the number of cpu cores on your host to avoid resource contention with the CPM
 # the log-opt tag will make it easier to find container logs if forwarding to New Relic
 # ports 8080 and 8082 expose admin endpoints like http://localhost:8080/status/check and http://localhost:8082/healthcheck?pretty=true
-docker run --name sjm1 \
-  -e PRIVATE_LOCATION_KEY=<your-private-location-key> \
+docker run --name $SJM_CONTAINER_NAME \
+  -e PRIVATE_LOCATION_KEY=$SJM_PRIVATE_LOCATION_KEY \
   -e HEAVYWEIGHT_WORKERS=1 \
   -e LOG_LEVEL=INFO \
   -v /var/run/docker.sock:/var/run/docker.sock:rw \
   --network sjm-bridge \
   -p 8080:8080 -p 8082:8082 \
   -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" \
-  newrelic/synthetics-job-manager:latest | tee -a sjm-docker-run.log 2>&1
+  $SJM_IMAGE | tee -a sjm-docker-run.log 2>&1
 
 # start a new minion to support monitoring activities
 # avoid using sudo with the docker run command since containers spawned by the minion won't inherit elevated permissions
@@ -58,8 +72,8 @@ docker run --name sjm1 \
 # the log-opt tag will make it easier to find container logs if forwarding to New Relic
 # 8080 and 8180 expose admin endpoints like http://localhost:8080/status/check and http://localhost:8180/healthcheck?pretty=true
 # map port 8081 to avoid port conflicts with SJM
-docker run --name cpm1 \
-  -e MINION_PRIVATE_LOCATION_KEY=<your-private-location-key> \
+docker run --name $CPM_CONTAINER_NAME \
+  -e MINION_PRIVATE_LOCATION_KEY=$CPM_PRIVATE_LOCATION_KEY \
   -e MINION_HEAVY_WORKERS=1 \
   -e MINION_LOG_LEVEL=INFO \
   -v /tmp:/tmp:rw \
@@ -67,4 +81,11 @@ docker run --name cpm1 \
   --network cpm-bridge \
   -p 8081:8080 -p 8180:8180 \
   -d --restart unless-stopped --log-opt tag="{{.Name}}/{{.ID}}" \
-  quay.io/newrelic/synthetics-minion:latest | tee -a cpm-docker-run.log 2>&1
+  $CPM_IMAGE | tee -a cpm-docker-run.log 2>&1
+
+# This script can be run in one of two ways:
+  # 1. save it to a file and replace global variables with your values, or
+  # 2. run with curl and supply variables with command-line arguments
+
+# To run with curl:
+  # curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cpm-combined-cron-job.sh | bash -s -- "YOUR_SJM_CONTAINER_NAME" "YOUR_SJM_PRIVATE_LOCATION_KEY" "YOUR_CPM_CONTAINER_NAME" "YOUR_CPM_PRIVATE_LOCATION_KEY"
