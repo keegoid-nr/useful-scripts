@@ -44,7 +44,7 @@ function stop_and_prune_containers {
 stop_and_prune_containers
 
 # start new job manager to support monitoring activities
-docker run --name $SJM_CONTAINER_NAME \
+docker run --name "${SJM_CONTAINER_NAME}" \
   -e PRIVATE_LOCATION_KEY=$SJM_PRIVATE_LOCATION_KEY \
   -v /var/run/docker.sock:/var/run/docker.sock:rw \
   -p 8080:8080 \

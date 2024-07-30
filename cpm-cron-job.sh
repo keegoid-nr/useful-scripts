@@ -42,7 +42,7 @@ function stop_and_prune_containers {
 stop_and_prune_containers
 
 # start a new minion to support monitoring activities
-docker run --name $CPM_CONTAINER_NAME \
+docker run --name "${CPM_CONTAINER_NAME}" \
   -e MINION_PRIVATE_LOCATION_KEY=$CPM_PRIVATE_LOCATION_KEY \
   -v /tmp:/tmp:rw \
   -v /var/run/docker.sock:/var/run/docker.sock:rw \

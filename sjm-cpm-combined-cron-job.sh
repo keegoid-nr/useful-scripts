@@ -56,7 +56,7 @@ docker network create cpm-bridge
 # set HEAVYWEIGHT_WORKERS to half the number of cpu cores on your host to avoid resource contention with the CPM
 # the log-opt tag will make it easier to find container logs if forwarding to New Relic
 # ports 8080 and 8082 expose admin endpoints like http://localhost:8080/status/check and http://localhost:8082/healthcheck?pretty=true
-docker run --name $SJM_CONTAINER_NAME \
+docker run --name "${SJM_CONTAINER_NAME}" \
   -e PRIVATE_LOCATION_KEY=$SJM_PRIVATE_LOCATION_KEY \
   -e HEAVYWEIGHT_WORKERS=1 \
   -e LOG_LEVEL=INFO \
@@ -72,7 +72,7 @@ docker run --name $SJM_CONTAINER_NAME \
 # the log-opt tag will make it easier to find container logs if forwarding to New Relic
 # 8080 and 8180 expose admin endpoints like http://localhost:8080/status/check and http://localhost:8180/healthcheck?pretty=true
 # map port 8081 to avoid port conflicts with SJM
-docker run --name $CPM_CONTAINER_NAME \
+docker run --name "${CPM_CONTAINER_NAME}" \
   -e MINION_PRIVATE_LOCATION_KEY=$CPM_PRIVATE_LOCATION_KEY \
   -e MINION_HEAVY_WORKERS=1 \
   -e MINION_LOG_LEVEL=INFO \
