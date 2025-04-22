@@ -15,14 +15,12 @@
 DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
 DEFAULT_SJM_POD_NAME="YOUR_SJM_POD_NAME"
 DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
-DEFAULT_PODMAN_API_SERVICE_PORT="8000"
 SJM_IMAGE="docker.io/newrelic/synthetics-job-manager:latest"
 
 # Use provided command-line arguments or fallback to default values
 SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
 SJM_POD_NAME="${2:-$DEFAULT_SJM_POD_NAME}"
 SJM_PRIVATE_LOCATION_KEY="${3:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
-PODMAN_API_SERVICE_PORT="${4:-$DEFAULT_PODMAN_API_SERVICE_PORT}"
 
 # Function to stop and prune containers and pods
 function stop_and_prune_containers {
@@ -47,7 +45,7 @@ podman run \
     --pod "$SJM_POD_NAME" \
     -e "PRIVATE_LOCATION_KEY=$SJM_PRIVATE_LOCATION_KEY" \
     -e "CONTAINER_ENGINE=PODMAN" \
-    -e "PODMAN_API_SERVICE_PORT=$PODMAN_API_SERVICE_PORT" \
+    -e "PODMAN_API_SERVICE_PORT=8000" \
     -e "PODMAN_POD_NAME=$SJM_POD_NAME" \
     -d \
     --restart unless-stopped \
@@ -58,4 +56,4 @@ podman run \
 # 2. Run with curl and supply variables with command-line arguments
 #
 # To run with curl:
-# curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job-podman.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_POD_NAME" "YOUR_PRIVATE_LOCATION_KEY" "YOUR_PODMAN_API_SERVICE_PORT"
+# curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job-podman.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_POD_NAME" "YOUR_PRIVATE_LOCATION_KEY"
