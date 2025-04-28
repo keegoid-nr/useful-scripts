@@ -9,6 +9,9 @@
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
 # License: MIT
+#
+# Make sure you've completed the necessary pre-requisites:
+# https://docs.newrelic.com/docs/synthetics/synthetic-monitoring/private-locations/install-job-manager/#podman-dependencies
 # -----------------------------------------------------
 
 # Default values for global variables
