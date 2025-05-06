@@ -63,4 +63,4 @@ podman run \
 # 2. Run with curl and supply variables with command-line arguments
 #
 # To run with curl:
-# curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job-podman.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_POD_NAME" "YOUR_PRIVATE_LOCATION_KEY"
+# curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job-podman.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_POD_NAME" "HOST_IP_ADDRESS" "YOUR_PRIVATE_LOCATION_KEY"
