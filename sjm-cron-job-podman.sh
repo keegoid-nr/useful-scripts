@@ -1,5 +1,5 @@
 #!/bin/bash
-# -----------------------------------------------------
+
 # SJM Cron Job for Podman
 # Helps to keep Podman clean and the SJM updated.
 # Can also be used to start the SJM.
@@ -12,7 +12,7 @@
 #
 # Make sure you've completed the necessary pre-requisites:
 # https://docs.newrelic.com/docs/synthetics/synthetic-monitoring/private-locations/install-job-manager/#podman-dependencies
-# -----------------------------------------------------
+
 
 # Default values for global variables
 DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"

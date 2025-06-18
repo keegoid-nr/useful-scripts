@@ -1,5 +1,5 @@
 #!/bin/bash
-# -----------------------------------------------------
+
 # SJM Cron Job
 # Helps to keep Docker clean and the SJM updated.
 # Can also be used to start the SJM.
@@ -9,7 +9,7 @@
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
 # License: MIT
-# -----------------------------------------------------
+
 
 # Default values for global variables
 DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# -----------------------------------------------------
+
 # CPM Cron Job
 # Helps to keep Docker clean and the CPM updated.
 # Can also be used to start the CPM.
@@ -9,7 +9,7 @@
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
 # License: MIT
-# -----------------------------------------------------
+
 
 # Default values for global variables
 DEFAULT_CPM_CONTAINER_NAME="YOUR_CONTAINER_NAME"

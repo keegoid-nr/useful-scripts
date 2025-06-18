@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Test OTLP Endpoint Script
+#
+# Author : Keegan Mullaney
+# Company: New Relic
+# Email  : kmullaney@newrelic.com
+# Website: github.com/keegoid-nr/useful-scripts
+# License: MIT
+
+
 # Define the target domain for mtr
 TARGET_DOMAIN="otlp.nr-data.net"
 TARGET_PORT="4318"
