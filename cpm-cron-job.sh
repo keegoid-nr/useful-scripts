@@ -33,7 +33,7 @@ function stop_and_prune_containers {
   docker system prune -af
 
   # check if CPM-related containers still exist
-  if [ "$(docker ps -qf 'label=name=synthetics-minion')" ] || [ "$(docker ps -qf 'label=name=synthetics-minion-runner')" ]; then
+  if [ "$(docker ps -aqf 'label=name=synthetics-minion')" ] || [ "$(docker ps -aqf 'label=name=synthetics-minion-runner')" ]; then
     stop_and_prune_containers $((cnt+1)) # recursively call function with incremented counter until no CPM containers exist
   fi
 }

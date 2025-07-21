@@ -37,7 +37,7 @@ function stop_and_prune_containers {
   docker system prune -af
 
   # check if any containers still exist
-  if [ "$(docker ps -aq)" ]; then
+  if [ "$(docker ps -aqf)" ]; then
     stop_and_prune_containers $((cnt+1)) # recursively call function with incremented counter until no containers exist
   fi
 }

@@ -35,7 +35,7 @@ function stop_and_prune_containers {
   docker system prune -af
 
   # check if SJM-related containers still exist
-  if [ "$(docker ps -qf 'label=application=synthetics-job-manager')" ] || [ "$(docker ps -qf 'label=application=synthetics-ping-runtime')" ] || [ "$(docker ps -qf 'ancestor=newrelic/synthetics-node-api-runtime')" ] || [ "$(docker ps -qf 'ancestor=newrelic/synthetics-node-browser-runtime')" ]; then
+  if [ "$(docker ps -aqf 'label=application=synthetics-job-manager')" ] || [ "$(docker ps -aqf 'label=application=synthetics-ping-runtime')" ] || [ "$(docker ps -aqf 'ancestor=newrelic/synthetics-node-api-runtime')" ] || [ "$(docker ps -aqf 'ancestor=newrelic/synthetics-node-browser-runtime')" ]; then
     stop_and_prune_containers $((cnt+1)) # recursively call function with incremented counter until no SJM containers exist
   fi
 }
