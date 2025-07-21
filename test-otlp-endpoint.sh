@@ -6,7 +6,7 @@
 # Company: New Relic
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
-# License: MIT
+# License: Apache License 2.0
 
 
 # Define the target domain for mtr

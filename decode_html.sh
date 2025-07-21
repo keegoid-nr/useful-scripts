@@ -8,7 +8,7 @@
 # Company: New Relic
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
-# License: MIT
+# License: Apache License 2.0
 #
 # Usage:
 #   ./decode_html.sh [filename]
