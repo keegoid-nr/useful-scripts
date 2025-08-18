@@ -18,7 +18,19 @@ REPO_NAME="newrelic"
 REPO_URL="https://helm-charts.newrelic.com"
 RELEASE_NAME="nri-bundle-release" # A temporary release name for templating
 
+# Create a temporary directory for our work
+WORK_DIR=$(mktemp -d)
+
 # --- Script Functions ---
+
+# Function to clean up the temporary directory on exit
+cleanup() {
+  echo "Cleaning up temporary directory..."
+  rm -rf "$WORK_DIR"
+}
+
+# Register the cleanup function to be called on script exit
+trap cleanup EXIT
 
 # Function to check if a command exists
 command_exists() {
@@ -55,14 +67,56 @@ fi
 helm repo update "$REPO_NAME"
 echo "Repo update complete."
 
-# 3. Render the chart templates and extract image names
-log "Templating the '$CHART_NAME' chart to find container images..."
-# We use helm template to generate the kubernetes manifests locally
-# A dummy cluster name and license key are required for the template rendering to succeed.
+# 3. Fetch, Unpack, and Update Dependencies for the Chart
+log "Fetching chart and its dependencies locally..."
+cd "$WORK_DIR"
+
+# Retry helm pull in case of transient network issues
+MAX_RETRIES=3
+RETRY_COUNT=0
+until helm pull "$REPO_NAME/$CHART_NAME" --untar > /dev/null 2>&1 || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+  RETRY_COUNT=$((RETRY_COUNT+1))
+  echo "helm pull failed. Retrying in 5 seconds... (Attempt $RETRY_COUNT/$MAX_RETRIES)"
+  sleep 5
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "Error: helm pull failed after $MAX_RETRIES attempts."
+  exit 1
+fi
+
+cd "$CHART_NAME"
+helm dependency update
+echo "Local chart dependencies are up to date."
+cd "$WORK_DIR"
+
+
+# 4. Render the chart templates and extract image names
+log "Templating the '$CHART_NAME' chart and its sub-charts to find container images..."
+# We use helm template on the local chart to ensure all nested dependencies are included.
+# We must enable all sub-charts to see their respective images.
+# Dummy values for cluster, license key, API key, and Account ID are required for the template rendering to succeed.
 # Then we grep for lines containing 'image:'
 # awk is used to print the second field (the image name and tag)
 # We then sort the results and get unique entries
-images=$(helm template "$RELEASE_NAME" "$REPO_NAME/$CHART_NAME" --set global.cluster=temp-cluster-name --set global.licenseKey=dummy-key | \
+images=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
+    --set global.cluster=temp-cluster-name \
+    --set global.licenseKey=dummy-key \
+    --set newrelic-infrastructure.enabled=true \
+    --set nri-prometheus.enabled=true \
+    --set nri-metadata-injection.enabled=true \
+    --set kube-state-metrics.enabled=true \
+    --set nri-kube-events.enabled=true \
+    --set newrelic-logging.enabled=true \
+    --set newrelic-pixie.enabled=true \
+    --set newrelic-eapm-agent.enabled=true \
+    --set k8s-agents-operator.enabled=true \
+    --set pixie-chart.enabled=true \
+    --set newrelic-infra-operator.enabled=true \
+    --set newrelic-prometheus-agent.enabled=true \
+    --set newrelic-k8s-metrics-adapter.enabled=true \
+    --set newrelic-k8s-metrics-adapter.personalAPIKey=dummy-api-key \
+    --set newrelic-k8s-metrics-adapter.config.accountID=12345678 | \
     grep -E '\s+image:' | \
     awk '{print $2}' | \
     sort | \
@@ -73,8 +127,8 @@ if [ -z "$images" ]; then
     exit 1
 fi
 
-# 4. Display the results
-log "Latest container images found in the '$CHART_NAME' chart:"
+# 5. Display the results
+log "Latest container images found in the '$CHART_NAME' chart and all its dependencies:"
 echo "$images"
 
 log "Script finished successfully!"
