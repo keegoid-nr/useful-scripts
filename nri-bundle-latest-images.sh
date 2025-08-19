@@ -1,14 +1,5 @@
 #!/bin/bash
 
-# nri-bundle-latest-images.sh
-# Quickly check latest nri-bundle sub chart image versions.
-#
-# Author : Keegan Mullaney
-# Company: New Relic
-# Email  : kmullaney@newrelic.com
-# Website: github.com/keegoid-nr/useful-scripts
-# License: Apache License 2.0
-
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
@@ -91,15 +82,13 @@ echo "Local chart dependencies are up to date."
 cd "$WORK_DIR"
 
 
-# 4. Render the chart templates and extract image names
-log "Templating the '$CHART_NAME' chart and its sub-charts to find container images..."
-# We use helm template on the local chart to ensure all nested dependencies are included.
-# We must enable all sub-charts to see their respective images.
-# Dummy values for cluster, license key, API key, and Account ID are required for the template rendering to succeed.
-# Then we grep for lines containing 'image:'
-# awk is used to print the second field (the image name and tag)
-# We then sort the results and get unique entries
-images=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
+# 4. Render the chart templates and extract image names grouped by chart
+log "Templating the '$CHART_NAME' chart to find container images..."
+# We use helm template with --debug to get the source file for each manifest.
+# We redirect stderr to stdout (2>&1) to ensure all output is piped to awk.
+# An awk script then parses this output, stores images in an array grouped by chart,
+# and prints the formatted, indented list at the end.
+images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
     --set global.cluster=temp-cluster-name \
     --set global.licenseKey=dummy-key \
     --set newrelic-infrastructure.enabled=true \
@@ -109,26 +98,69 @@ images=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
     --set nri-kube-events.enabled=true \
     --set newrelic-logging.enabled=true \
     --set newrelic-pixie.enabled=true \
+    --set newrelic-pixie.deployKey=dummy-deploy-key \
     --set newrelic-eapm-agent.enabled=true \
     --set k8s-agents-operator.enabled=true \
-    --set pixie-chart.enabled=true \
     --set newrelic-infra-operator.enabled=true \
     --set newrelic-prometheus-agent.enabled=true \
     --set newrelic-k8s-metrics-adapter.enabled=true \
     --set newrelic-k8s-metrics-adapter.personalAPIKey=dummy-api-key \
-    --set newrelic-k8s-metrics-adapter.config.accountID=12345678 | \
-    grep -E '\s+image:' | \
-    awk '{print $2}' | \
-    sort | \
-    uniq)
+    --set newrelic-k8s-metrics-adapter.config.accountID=12345678 \
+    --debug 2>&1 | \
+    awk '
+      # This awk script collects all images and groups them by their source sub-chart.
+      # It then prints a formatted, indented list.
+      
+      # Set the default chart name for templates in the parent chart
+      BEGIN { current_chart="nri-bundle (parent)" }
+      
+      # When a "# Source:" line is found, update the current chart name
+      /^# Source: / {
+          split($3, path_parts, "/")
+          if (path_parts[2] == "charts") {
+              current_chart = path_parts[3]
+          } else {
+              current_chart = "nri-bundle (parent)"
+          }
+      }
+      
+      # When an "image:" line is found, clean up the image name and add it to our array.
+      # The array key is the chart name, and the value is a growing list of its images.
+      /^[ \t]+image:/ {
+          gsub(/"|\047/, "", $2) # Remove quotes
+          # Only process if the image name is not empty
+          if ($2 != "") {
+              # If this is the first image for this chart, initialize it. Otherwise, add a newline.
+              if (images[current_chart] == "") {
+                  images[current_chart] = "\t- " $2
+              } else {
+                  # Avoid adding duplicates
+                  if (index(images[current_chart], $2) == 0) {
+                    images[current_chart] = images[current_chart] "\n\t- " $2
+                  }
+              }
+          }
+      }
+      
+      # After processing all lines, print the formatted output.
+      END {
+          # Sort the chart names alphabetically for consistent output
+          PROCINFO["sorted_in"] = "@ind_str_asc"
+          for (chart in images) {
+              print chart ":"
+              print images[chart]
+          }
+      }
+    ')
 
-if [ -z "$images" ]; then
+
+if [ -z "$images_by_chart" ]; then
     echo "No images found. This could be due to an issue with the Helm chart or the template command."
     exit 1
 fi
 
 # 5. Display the results
-log "Latest container images found in the '$CHART_NAME' chart and all its dependencies:"
-echo "$images"
+log "Container images found in '$CHART_NAME' and its dependencies:"
+echo "$images_by_chart"
 
 log "Script finished successfully!"
