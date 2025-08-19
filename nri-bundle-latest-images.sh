@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# nri-bundle-latest-images.sh
+# Quickly check latest nri-bundle sub chart image versions.
+#
+# Author : Keegan Mullaney
+# Company: New Relic
+# Email  : kmullaney@newrelic.com
+# Website: github.com/keegoid-nr/useful-scripts
+# License: Apache License 2.0
+
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
