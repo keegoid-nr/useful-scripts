@@ -44,7 +44,7 @@ $ENDPOINTS = @(
 # --- Script Start ---
 # Create a unique directory for the output files
 $TIMESTAMP = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$OUTPUT_DIR = "nr_diagnostics_${TIMESTAMP}"
+$OUTPUT_DIR = "infra_network_diag_${TIMESTAMP}"
 New-Item -ItemType Directory -Path $OUTPUT_DIR | Out-Null
 Write-Host "All outputs will be saved in the .\$($OUTPUT_DIR) directory."
 Write-Host "------------------------------------------------------------"

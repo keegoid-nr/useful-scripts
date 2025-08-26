@@ -14,9 +14,9 @@
 # --- Section 0: Prerequisite Checks ---
 # Check if script is being run as root
 if [[ $EUID -ne 0 ]]; then
-   echo "❌ Error: This script must be run as root to access system logs and tools."
-   echo "Please run it with sudo: sudo $0"
-   exit 1
+    echo "❌ Error: This script must be run as root to access system logs and tools."
+    echo "Please run it with sudo: sudo $0"
+    exit 1
 fi
 
 # Check for critical tools. Exit if they are not found.
@@ -46,7 +46,45 @@ fi
 echo "✅ Using '${DNS_TOOL}' for DNS lookups."
 
 
-# --- Section 1: Configuration ---
+# --- Section 1: Configuration & Argument Parsing ---
+
+# Help/Usage function
+usage() {
+    echo "Usage: sudo $0 [-c <count>]"
+    echo "  -c <count>: Optional. Number of packets for mtr to send (default: 20)."
+    exit 1
+}
+
+# Default number of packets for mtr to send
+MTR_PACKET_COUNT=20
+
+# Parse command-line options using getopts
+while getopts ":c:h" opt; do
+  case ${opt} in
+    c )
+      # Validate that the argument for -c is a positive integer
+      if [[ "${OPTARG}" =~ ^[1-9][0-9]*$ ]]; then
+        MTR_PACKET_COUNT=${OPTARG}
+      else
+        echo "❌ Error: Invalid packet count provided for -c. Must be a positive integer." >&2
+        usage
+      fi
+      ;;
+    h )
+      usage
+      ;;
+    \? )
+      echo "Invalid option: -$OPTARG" >&2
+      usage
+      ;;
+    : )
+      echo "Invalid option: -$OPTARG requires an argument" >&2
+      usage
+      ;;
+  esac
+done
+shift $((OPTIND -1)) # Remove parsed options from the positional parameters
+
 # New Relic endpoints to test
 ENDPOINTS=(
   "metric-api.newrelic.com"
@@ -54,16 +92,15 @@ ENDPOINTS=(
   "infrastructure-command-api.newrelic.com"
   "log-api.newrelic.com"
 )
-# Number of packets for mtr to send
-MTR_PACKET_COUNT=20
 
 
 # --- Script Start ---
 # Create a unique directory for the output files
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR="nr_diagnostics_${TIMESTAMP}"
+OUTPUT_DIR="infra_network_diag_${TIMESTAMP}"
 mkdir -p "${OUTPUT_DIR}"
 echo "✅ All outputs will be saved in the ./${OUTPUT_DIR}/ directory."
+echo "✅ Using mtr packet count of ${MTR_PACKET_COUNT}."
 echo "------------------------------------------------------------"
 
 
@@ -105,7 +142,7 @@ for endpoint in "${ENDPOINTS[@]}"; do
     echo "Port check method: nc -vz" >> "${port_check_file}"
   else
     echo "nc -vz failed or not available, using bash fallback..." > "${port_check_file}"
-    (timeout 5 bash -c "echo >/dev/tcp/${endpoint}/443") &>> "${port_check_file}"
+    (timeout 5 bash -c "echo >/dev/tcp/${endpoint}/443") >> "${port_check_file}" 2>&1
     if [ $? -eq 0 ]; then echo "Port check method: bash. Result: Success" >> "${port_check_file}"; else echo "Port check method: bash. Result: Failure" >> "${port_check_file}"; fi
   fi
 
@@ -139,7 +176,7 @@ for server in "${DNS_SERVERS[@]}"; do
       echo "Port check method: nc -vzu" >> "${dns_port_check_file}"
     else
       echo "nc -vzu failed or not available, using bash fallback..." > "${dns_port_check_file}"
-      (timeout 5 bash -c "echo >/dev/udp/${server}/53") &>> "${dns_port_check_file}"
+      (timeout 5 bash -c "echo >/dev/udp/${server}/53") >> "${dns_port_check_file}" 2>&1
       if [ $? -eq 0 ]; then echo "Port check method: bash. Result: Success" >> "${dns_port_check_file}"; else echo "Port check method: bash. Result: Failure" >> "${dns_port_check_file}"; fi
     fi
 
