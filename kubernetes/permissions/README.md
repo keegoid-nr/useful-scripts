@@ -1,15 +1,15 @@
 # Pod Permission Inspector
 
-A command-line utility to run a suite of diagnostic checks inside a running Kubernetes pod to troubleshoot permissions, capabilities, and configuration issues. The script can find pods via label selectors or accept a list of pods from a command pipeline.
+A command-line utility to run a suite of diagnostic checks inside a running Kubernetes pod to troubleshoot permissions, capabilities, and configuration issues.
 
 ## Features ✨
 
-- **Flexible Pod Targeting**: Find a target pod using a label selector or pipe a list of pod names directly from `kubectl get po`.
-- **Namespace Support**: Specify a target namespace using the `-n` flag.
-- **Comprehensive Checks**: Runs checks for user/group IDs, Linux capabilities, filesystem permissions, process security contexts, and more.
-- **Conditional Logic**: Intelligently skips checks for binaries that don't exist in the container (e.g., `node`).
-- **File Logging**: Saves all output to a timestamped log file, which can be overridden with a custom filename using the `-f` flag.
-- **Robust CLI**: Includes a full `getopts` implementation with a `-h` flag for help and usage instructions.
+- **Flexible Pod Targeting**: Find pods using a label selector or pipe a list of pod names directly from `kubectl get po`.
+- **Multi-Pod Processing**: Inspects all pods that match the criteria, not just the first one.
+- **Namespace & Container Selection**: Specify a target namespace (`-n`) and a specific container (`-c`) within the pod.
+- **Intelligent Validation**: Automatically verifies that pods are running and that specified containers exist before attempting to run checks.
+- **Resilient Execution**: Includes an automatic retry mechanism with configurable retries (`-r`) and intervals (`-s`) to handle transient errors when a pod is starting up.
+- **Split Output**: Keeps the terminal clean with high-level status messages while logging all detailed inspection output to a file.
 
 ## Prerequisites
 
@@ -27,38 +27,36 @@ A command-line utility to run a suite of diagnostic checks inside a running Kube
 
 ## Usage
 
-The script can be run in two main modes: Flag Mode (to find a single pod) or Pipeline Mode (to process multiple pods).
-
-    Usage: ./inspect_permissions.sh -l <label_selector> [-n <namespace>] [-f <output_file>] [-h]
-           <command> | ./inspect_permissions.sh [-n <namespace>] [-f <output_file>]
+    Usage: ./inspect_permissions.sh -l <label_selector> [-n <namespace>] [-c <container>] [-f <output_file>] [-r <retries>] [-s <seconds>] [-h]
+           <command> | ./inspect_permissions.sh [-n <namespace>] [-c <container>] [-f <output_file>] [-r <retries>] [-s <seconds>]
 
 ### Examples
 
-**1. Inspect a pod by label in the default namespace:**
+**1. Inspect all pods matching a label:**
 
-    ./inspect_permissions.sh -l "app.kubernetes.io/name=node-api-runtime"
+    ./inspect_permissions.sh -l "app=my-app"
 
-**2. Inspect a pod by label in a specific namespace:**
+**2. Inspect pods in a specific namespace and container:**
 
-    ./inspect_permissions.sh -n "production" -l "app=my-api"
+    ./inspect_permissions.sh -n "production" -l "component=api" -c "api-server"
 
-**3. Inspect a pod and save the output to a specific file:**
+**3. Inspect pods from a pipeline with custom retry logic:**
 
-    ./inspect_permissions.sh -n "staging" -l "app=web-server" -f web-server-check.log
-
-**4. Inspect all pods matching a label using a pipeline:**
-
-    kubectl get po -n "data-processing" -l "component=worker" -o name | ./inspect_permissions.sh -n "data-processing"
+    kubectl get po -n "jobs" -o name | ./inspect_permissions.sh -n "jobs" -r 5 -s 1
 
 ## Checks Performed
 
-The script runs the following commands inside the container to provide a full diagnostic picture:
+The script runs the following commands inside the container:
 
 - **`id`**: Shows the user (`uid`) and group (`gid`) the container is running as.
-- **`cat /proc/1/status | grep Cap`**: Displays the Linux capabilities of the container's main process (PID 1).
+- **`cat /proc/1/status | grep Cap`**: Displays the Linux capabilities of the container's main process.
 - **`capsh --print`**: Shows the capabilities of the current shell process.
-- **`ls -ld /tmp`**: Checks the ownership and permissions of the `/tmp` directory.
-- **`ps auxZ`**: Lists all running processes along with their security context (e.g., SELinux labels).
-- **`cat /etc/resolv.conf`**: Shows the DNS configuration, crucial for troubleshooting network connectivity.
-- **`mount`**: Displays all mounted filesystems inside the container.
-- **`node` checks (conditional)**: If the `node` binary is found, it checks its file permissions, binary capabilities (`getcap`), and version.
+- **`ls -ld /tmp`**: Checks permissions of the `/tmp` directory.
+- **`ps auxZ`**: Lists running processes with their security context.
+- **`cat /etc/resolv.conf`**: Shows the DNS configuration.
+- **`mount`**: Displays all mounted filesystems.
+- **`node` checks (conditional)**: If `node` is present, checks its version and capabilities.
+
+## License
+
+This project is licensed under the Apache 2.0 License. See the [LICENSE](../../LICENSE) file for details.
