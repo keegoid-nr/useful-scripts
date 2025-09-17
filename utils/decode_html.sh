@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # A simple bash script to decode common HTML entities.
 # It can read from a file, standard input, or the system clipboard.
 # If input is from the clipboard, the decoded text is copied back.

@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Test OTLP Endpoint Script
 #
 # Author : Keegan Mullaney

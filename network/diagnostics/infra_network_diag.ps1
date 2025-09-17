@@ -1,5 +1,4 @@
 #Requires -RunAsAdministrator
-
 # New Relic Infra Network Diagnostics Script for Windows
 # This script collects network diagnostics information
 # related to the Infra agent for New Relic support cases.
@@ -12,6 +11,24 @@
 
 
 # --- Section 0: Prerequisite Checks ---
+
+# Help/Usage function
+function Show-Usage {
+    Write-Host "Usage: .\infra_network_diag.ps1 [-PathpingCount <count>]"
+    Write-Host "  -PathpingCount <count>: Optional. Number of pings for pathping to send (default: 20)."
+    exit 1
+}
+
+# Parse command-line options
+param (
+    [int]$PathpingCount = 20,
+    [switch]$Help
+)
+
+if ($Help) {
+    Show-Usage
+}
+
 # Check if script is being run as Administrator
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error "This script must be run as an Administrator to access system logs and tools."
@@ -76,7 +93,7 @@ foreach ($endpoint in $ENDPOINTS) {
   # Path analysis using pathping
   Write-Host "[*] Running pathping for ${endpoint}. This may take several minutes..."
   Write-Host "[*] Note: pathping uses ICMP and may provide incomplete results if firewalls block it."
-  pathping.exe -n -q 20 "${endpoint}" | Out-File -FilePath "${OUTPUT_DIR}\pathping_${endpoint}.txt"
+  pathping.exe -n -q $PathpingCount "${endpoint}" | Out-File -FilePath "${OUTPUT_DIR}\pathping_${endpoint}.txt"
 
   Write-Host "--- Finished ${endpoint} ---"
 }

@@ -1,6 +1,4 @@
 #!/bin/bash
-
-# nri-bundle-latest-images.sh
 # Quickly check latest nri-bundle sub chart image versions.
 #
 # Author : Keegan Mullaney
@@ -119,10 +117,10 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
     awk '
       # This awk script collects all images and groups them by their source sub-chart.
       # It then prints a formatted, indented list.
-      
+
       # Set the default chart name for templates in the parent chart
       BEGIN { current_chart="nri-bundle (parent)" }
-      
+
       # When a "# Source:" line is found, update the current chart name
       /^# Source: / {
           split($3, path_parts, "/")
@@ -132,7 +130,7 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
               current_chart = "nri-bundle (parent)"
           }
       }
-      
+
       # When an "image:" line is found, clean up the image name and add it to our array.
       # The array key is the chart name, and the value is a growing list of its images.
       /^[ \t]+image:/ {
@@ -150,7 +148,7 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
               }
           }
       }
-      
+
       # After processing all lines, print the formatted output.
       END {
           # Sort the chart names alphabetically for consistent output

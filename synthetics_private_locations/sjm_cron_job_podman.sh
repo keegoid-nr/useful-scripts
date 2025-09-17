@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # SJM Cron Job for Podman
 # Helps to keep Podman clean and the SJM updated.
 # Can also be used to start the SJM.
@@ -13,6 +12,27 @@
 # Make sure you've completed the necessary pre-requisites:
 # https://docs.newrelic.com/docs/synthetics/synthetic-monitoring/private-locations/install-job-manager/#podman-dependencies
 
+# Usage function
+function usage {
+  echo "Usage: $0 [SJM_CONTAINER_NAME] [SJM_POD_NAME] [HOST_IP_ADDRESS] [SJM_PRIVATE_LOCATION_KEY]"
+  echo "This script helps to keep Podman clean and the Synthetics Job Manager (SJM) updated."
+  echo "It can also be used to start the SJM."
+  echo
+  echo "Arguments:"
+  echo "  SJM_CONTAINER_NAME         (Optional) The name for the SJM container. Defaults to YOUR_SJM_CONTAINER_NAME."
+  echo "  SJM_POD_NAME               (Optional) The name for the SJM pod. Defaults to YOUR_SJM_POD_NAME."
+  echo "  HOST_IP_ADDRESS            (Optional) The IP address of your host. Defaults to YOUR_HOST_IP_ADDRESS."
+  echo "  SJM_PRIVATE_LOCATION_KEY   (Optional) Your Synthetics private location key. Defaults to YOUR_SJM_PRIVATE_LOCATION_KEY."
+  echo
+  echo "Options:"
+  echo "  -h, --help                 Display this help message."
+}
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
 
 # Default values for global variables
 DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
@@ -20,6 +40,7 @@ DEFAULT_SJM_POD_NAME="YOUR_SJM_POD_NAME"
 DEFAULT_HOST_IP_ADDRESS="YOUR_HOST_IP_ADDRESS"
 DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
 SJM_IMAGE="docker.io/newrelic/synthetics-job-manager:latest"
+
 
 # Use provided command-line arguments or fallback to default values
 SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
@@ -57,10 +78,3 @@ podman run \
     -d \
     --restart unless-stopped \
     "$SJM_IMAGE" | tee -a podman-run.log 2>&1
-
-# This script can be run in one of two ways:
-# 1. Save it to a file and replace global variables with your values, or
-# 2. Run with curl and supply variables with command-line arguments
-#
-# To run with curl:
-# curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job-podman.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_POD_NAME" "HOST_IP_ADDRESS" "YOUR_PRIVATE_LOCATION_KEY"

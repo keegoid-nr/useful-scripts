@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # SJM Cron Job
 # Helps to keep Docker clean and the SJM updated.
 # Can also be used to start the SJM.
@@ -10,6 +9,25 @@
 # Website: github.com/keegoid-nr/useful-scripts
 # License: Apache License 2.0
 
+# Usage function
+function usage {
+  echo "Usage: $0 [SJM_CONTAINER_NAME] [SJM_PRIVATE_LOCATION_KEY]"
+  echo "This script helps to keep Docker clean and the Synthetics Job Manager (SJM) updated."
+  echo "It can also be used to start the SJM."
+  echo
+  echo "Arguments:"
+  echo "  SJM_CONTAINER_NAME         (Optional) The name for the SJM container. Defaults to YOUR_SJM_CONTAINER_NAME."
+  echo "  SJM_PRIVATE_LOCATION_KEY   (Optional) Your Synthetics private location key. Defaults to YOUR_SJM_PRIVATE_LOCATION_KEY."
+  echo
+  echo "Options:"
+  echo "  -h, --help                 Display this help message."
+}
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
 
 # Default values for global variables
 DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
@@ -52,10 +70,3 @@ docker run --name "${SJM_CONTAINER_NAME}" \
   -d --restart unless-stopped \
   --log-opt tag="{{.Name}}/{{.ID}}" \
   $SJM_IMAGE | tee -a docker-run.log 2>&1
-
-# This script can be run in one of two ways:
-  # 1. save it to a file and replace global variables with your values, or
-  # 2. run with curl and supply variables with command-line arguments
-
-# To run with curl:
-  # curl -sSL https://raw.githubusercontent.com/keegoid-nr/useful-scripts/main/sjm-cron-job.sh | bash -s -- "YOUR_CONTAINER_NAME" "YOUR_PRIVATE_LOCATION_KEY"

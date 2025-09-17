@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # New Relic Infra Network Diagnostics Script
 # This script collects network diagnostics information
 # related to the Infra agent for New Relic support cases.
@@ -9,6 +8,13 @@
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
 # License: Apache License 2.0
+
+# Help/Usage function
+usage() {
+    echo "Usage: sudo $0 [-c <count>]"
+    echo "  -c <count>: Optional. Number of packets for mtr to send (default: 20)."
+    exit 1
+}
 
 
 # --- Section 0: Prerequisite Checks ---
@@ -47,13 +53,6 @@ echo "✅ Using '${DNS_TOOL}' for DNS lookups."
 
 
 # --- Section 1: Configuration & Argument Parsing ---
-
-# Help/Usage function
-usage() {
-    echo "Usage: sudo $0 [-c <count>]"
-    echo "  -c <count>: Optional. Number of packets for mtr to send (default: 20)."
-    exit 1
-}
 
 # Default number of packets for mtr to send
 MTR_PACKET_COUNT=20
