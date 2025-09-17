@@ -29,13 +29,13 @@ This directory contains scripts designed to be run as cron jobs to ensure the Ne
     **For Docker:**
 
     ```crontab
-    */5 * * * * /path/to/sjm_cron_job.sh
+    0 2 * * 0 /path/to/sjm_cron_job.sh
     ```
 
     **For Podman:**
 
     ```crontab
-    */5 * * * * /path/to/sjm_cron_job_podman.sh
+    0 2 * * 0 /path/to/sjm_cron_job_podman.sh
     ```
 
     *Note: Ensure the script is executable (`chmod +x <script_name>`).*
