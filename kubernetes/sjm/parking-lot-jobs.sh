@@ -53,18 +53,10 @@ first_ts_str=$(echo "$time_boundaries" | head -n 1); last_ts_str=$(echo "$time_b
 start_epoch=$(date -d "$(echo "$first_ts_str" | sed 's/,.*//; s/{.*}//')" +%s)
 end_epoch=$(date -d "$(echo "$last_ts_str" | sed 's/,.*//; s/{.*}//')" +%s)
 
-# --- CORRECTED: More robust duration and interval calculation ---
 total_duration=$((end_epoch - start_epoch))
-# Handle case where duration is 0 to avoid division by zero
-if [ "$total_duration" -eq 0 ]; then
-    total_duration=1
-fi
+if [ "$total_duration" -eq 0 ]; then total_duration=1; fi
 interval_length=$((total_duration / NUM_INTERVALS))
-# Handle case where integer division results in 0 for very short logs
-if [ "$interval_length" -lt 1 ]; then
-    interval_length=1
-fi
-# --- END CORRECTION ---
+if [ "$interval_length" -lt 1 ]; then interval_length=1; fi
 
 echo "   - Log starts at: $(date -d @$start_epoch)"
 echo "   - Log ends at:   $(date -d @$end_epoch)"
@@ -88,17 +80,27 @@ BEGIN {
         bucket = int((current_epoch - start) / interval)
         if (bucket >= num_intervals) { bucket = num_intervals - 1 }
         
+        # Get the response size from the last field
+        bytes = $NF
+        
         if ($7 ~ /submit\/job/) {
-            if (verbose) { print "DEBUG (Submit):   Line " FNR ": Found submission. Adding count: " $NF > "/dev/stderr" }
-            submitted_count[bucket] += $NF
+            # MODIFIED: Only add to the count if bytes are greater than 0
+            if (bytes > 0) {
+                if (verbose) { print "DEBUG (Submit):   Line " FNR ": Found submission. Adding count: " bytes > "/dev/stderr" }
+                submitted_count[bucket] += bytes
+            }
             next
         }
         
         runtime = $7; sub(/.*\//, "", runtime)
         if (runtime == "script_api" || runtime == "script_browser") {
-            if (verbose) { print "DEBUG (Complete): Line " FNR ": Found completion for \"" runtime "\". Status: " $NF > "/dev/stderr" }
-            status = $NF
-            count[bucket, runtime, status]++
+            if (verbose) { print "DEBUG (Complete): Line " FNR ": Found completion for \"" runtime "\". Bytes: " bytes > "/dev/stderr" }
+            # MODIFIED: Logic is now based on whether bytes are greater than 0
+            if (bytes > 0) {
+                count[bucket, runtime, 1]++ # Increment "Found" count
+            } else {
+                count[bucket, runtime, 0]++ # Increment "Not Found" count
+            }
             runtimes[runtime] = 1
         }
     }
@@ -108,7 +110,7 @@ END {
     
     for (b = 0; b < num_intervals; b++) {
         interval_start = start + (b * interval); interval_end = interval_start + interval - 1
-        if (b == num_intervals - 1) { interval_end = start + total_dur } # Ensure last interval ends at the true end time
+        if (b == num_intervals - 1) { interval_end = start + total_dur }
         print "--- 📊 Time Interval " (b+1) " of " num_intervals " (" format_time(interval_start) " to " format_time(interval_end) ") ---"
         interval_submitted = submitted_count[b] + 0
         grand_total_submitted += interval_submitted
@@ -120,8 +122,8 @@ END {
                 has_data = 1
                 found_pct = sprintf("%.2f", (found / total) * 100); not_found_pct = sprintf("%.2f", (not_found / total) * 100)
                 print "   - Runtime: " rt
-                print "     Jobs Found (1):      " found " (" found_pct "%)"
-                print "     Jobs Not Found (0):  " not_found " (" not_found_pct "%)"
+                print "     Jobs Found:      " found " (" found_pct "%)"
+                print "     Jobs Not Found:  " not_found " (" not_found_pct "%)"
             }
         }
         if (!has_data) { print "   (No job completion data in this interval)" }
@@ -143,18 +145,10 @@ END {
     print "Total Jobs Found:     " grand_total_found
     print "Total Jobs Not Found: " grand_total_not_found
     
-    if (grand_total_submitted == grand_total_found) {
-        print "Status:               ✅ OK (All submitted jobs were accounted for)"
-    } else {
-        discrepancy = grand_total_submitted - grand_total_found
-        loss_pct_str = "N/A"
-        if (grand_total_submitted > 0) {
-            loss_pct = (discrepancy / grand_total_submitted) * 100
-            loss_pct_str = sprintf("%.2f%%", loss_pct)
-        }
-        print "Status:               ❌ MISMATCH"
-        print "Discrepancy:          " discrepancy " jobs (" loss_pct_str " discrepancy)"
-    }
+    # NOTE: The discrepancy logic may need re-evaluation, as "submitted" is a sum of bytes
+    # while "found" is a count of lines. They are different units.
+    discrepancy = grand_total_submitted - grand_total_found
+    print "Discrepancy (Submitted vs. Found): " discrepancy
     print "======================================================================"
 }
 ' "$LOG_FILE"
