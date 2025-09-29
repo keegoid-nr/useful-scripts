@@ -8,15 +8,15 @@ This directory contains scripts for analyzing and manipulating logs related to t
 
 ## `parking-lot-jobs.sh`
 
-This script analyzes SJM logs to calculate job submission rates and identify discrepancies between submitted and completed jobs. It's useful for diagnosing "parking lot" scenarios where jobs are submitted but never picked up.
+This script helps assess if jobs are making their way through the job manager's "parking lot." It does this by comparing **how many jobs are submitted to New Relic** versus **how many are successfully retrieved by runtime pod GET requests**.
 
 ### Features
 
 - **Time-Series Analysis**: Splits the log file's duration into a configurable number of intervals for granular analysis.
 - **Hybrid Timestamp Parsing**: Determines the log's total duration from `YYYY-MM-DD HH:MM:SS` timestamps while parsing job-specific lines with a different format.
 - **Submission & Completion Tracking**: Monitors two types of events:
-    1. **Job Submissions**: Tracks lines containing `/api/v1/submit/job`.
-    2. **Job Completions**: Tracks lines for `script_api` and `script_browser` runtimes.
+    1. **Job Submissions**: Tracks `POST` requests to `/api/v1/submit/job` where results are sent to New Relic.
+    2. **Job Completions**: Tracks `GET` requests from runtime pods for `script_api` and `script_browser` jobs.
 - **Rate Calculation**: Calculates the jobs submitted per minute for each interval and as an overall average.
 - **Detailed Summaries**: Provides both per-interval breakdowns and a final, overall summary of the entire log file.
 - **Verbose Debug Mode**: Includes a `--verbose` flag to print detailed, line-by-line processing information for easy verification.
