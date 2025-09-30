@@ -8,15 +8,17 @@ This directory contains scripts for analyzing and manipulating logs related to t
 
 ## `parking-lot-jobs.sh`
 
-This script helps assess if jobs are making their way through the job manager's "parking lot." It does this by comparing **how many jobs are submitted to New Relic** versus **how many are successfully retrieved by runtime pod GET requests**.
+This script helps assess if jobs are making their way through the job manager's "parking lot." It does this by comparing the number of **jobs put into the lot**, **jobs retrieved by runtime pods**, **jobs that time out**, and **jobs submitted to New Relic**. This is useful for diagnosing scenarios where jobs are submitted but never completed.
 
 ### Features
 
 - **Time-Series Analysis**: Splits the log file's duration into a configurable number of intervals for granular analysis.
-- **Hybrid Timestamp Parsing**: Determines the log's total duration from `YYYY-MM-DD HH:MM:SS` timestamps while parsing job-specific lines with a different format.
-- **Submission & Completion Tracking**: Monitors two types of events:
-    1. **Job Submissions**: Tracks `POST` requests to `/api/v1/submit/job` where results are sent to New Relic.
-    2. **Job Completions**: Tracks `GET` requests from runtime pods for `script_api` and `script_browser` jobs.
+- **Multi-Format Log Parsing**: Handles multiple log line and timestamp formats in a single pass.
+- **Full Lifecycle Tracking**: Monitors four types of events:
+    1. **Parking Lot Entry**: Counts `Putting job...` informational log lines.
+    2. **Parking Lot Timeout**: Counts `A job was not removed...` error log lines.
+    3. **Job Retrieval**: Tracks `GET` requests from runtime pods for `script_api` and `script_browser` jobs.
+    4. **Job Submission**: Tracks `POST` requests to `/api/v1/submit/job` where results are sent to New Relic.
 - **Rate Calculation**: Calculates the jobs submitted per minute for each interval and as an overall average.
 - **Detailed Summaries**: Provides both per-interval breakdowns and a final, overall summary of the entire log file.
 - **Verbose Debug Mode**: Includes a `--verbose` flag to print detailed, line-by-line processing information for easy verification.
@@ -40,13 +42,15 @@ This script requires **GNU Awk** (`gawk`) for its advanced time-handling functio
 
 ### Understanding the Logic
 
-The script is designed to parse specific lines that follow the structure of the **[Common Log Format](https://en.wikipedia.org/wiki/Common_Log_Format)**. It operates based on the following rules:
+The script uses a hybrid approach to determine the outcome of each log line:
 
-- **Job Submitted**: A submission log line (`/api/v1/submit/job`) is counted only if its response size (the final number on the line) is **greater than 0**. The script sums this number to get the total jobs submitted.
-- **Job Found**: A completion log line (`script_api` or `script_browser`) is counted as "Found" if its response size (the final number) is **greater than 0**.
-- **Job Not Found**: A completion log line is counted as "Not Found" if its response size is **exactly 0**.
+- **Job Put into Parking Lot**: Counted when a line matches the pattern `"Putting job .* into the parking lot"`.
+- **Job Timed Out**: Counted when a line matches the pattern `"A job was not removed from the parkinglot"`.
+- **Job Submitted to New Relic**: A `POST` to `/api/v1/submit/job` is counted if it has a **`202 Accepted`** response code. The script sums the number at the end of these lines for the total count.
+- **Job Retrieved (Found)**: A `GET` request for `script_api` or `script_browser` is counted as "Found" if its **response size** (the final number on the line) is **greater than 0**.
+- **Job Not Retrieved (Not Found)**: A `GET` request is counted as "Not Found" if its **response size** is **exactly 0**.
 
-The "Discrepancy" in the final summary compares the total number of submitted jobs (sum of response sizes) to the total count of "Found" log lines.
+The "Discrepancy" in the final summary is calculated as `(Jobs Put into Lot) - (Jobs Retrieved + Jobs Timed Out)`.
 
 ---
 
