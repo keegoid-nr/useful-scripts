@@ -25,6 +25,45 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Check for a supported OS version to ensure modern TLS support
+echo "🔎 Verifying operating system compatibility..."
+unsupported_os_exit() {
+    echo "❌ Error: Unsupported Operating System Detected."
+    echo "This script requires a modern Linux distribution to ensure tools like curl support current TLS standards (TLS 1.2+)."
+    echo "Systems like CentOS/RHEL 6 are no longer supported. Please run this script on a newer host."
+    exit 1
+}
+
+if [ -f /etc/os-release ]; then
+    # Source the os-release file to get distribution info
+    . /etc/os-release
+    MAJOR_VERSION=$(echo "$VERSION_ID" | cut -d. -f1)
+
+    case "$ID" in
+        centos|rhel|almalinux|rocky)
+            if [ "$MAJOR_VERSION" -lt 7 ]; then unsupported_os_exit; fi
+            ;;
+        ubuntu)
+            if [ "$MAJOR_VERSION" -lt 16 ]; then unsupported_os_exit; fi
+            ;;
+        debian)
+            if [ "$MAJOR_VERSION" -lt 9 ]; then unsupported_os_exit; fi
+            ;;
+        *)
+            echo "✅ OS ($ID $VERSION_ID) not in explicit check list, proceeding."
+            ;;
+    esac
+elif [ -f /etc/redhat-release ]; then
+    # Fallback for very old systems without /etc/os-release (e.g., CentOS 6)
+    if grep -q "release 6" /etc/redhat-release; then
+        unsupported_os_exit
+    fi
+else
+    echo "⚠️  Could not definitively determine OS version. Proceeding with caution."
+fi
+echo "✅ Operating system is supported."
+
+
 # Check for critical tools. Exit if they are not found.
 CRITICAL_TOOLS=("mtr" "curl")
 for tool in "${CRITICAL_TOOLS[@]}"; do
@@ -203,5 +242,7 @@ echo "------------------------------------------------------------"
 echo "📦 Compressing all output files..."
 tar -czvf "${OUTPUT_DIR}.tar.gz" "${OUTPUT_DIR}"
 # Ensure the final archive is accessible by the user who ran sudo
-chown -R "${SUDO_USER}:${SUDO_GID}" "${OUTPUT_DIR}" "${OUTPUT_DIR}.tar.gz" &> /dev/null
+if [ -n "$SUDO_USER" ]; then
+    chown -R "${SUDO_USER}:${SUDO_GID}" "${OUTPUT_DIR}" "${OUTPUT_DIR}.tar.gz" &> /dev/null
+fi
 echo "✅ Done! Please attach the '${OUTPUT_DIR}.tar.gz' file to your New Relic support case for analysis."
