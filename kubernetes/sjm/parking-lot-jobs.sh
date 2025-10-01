@@ -1,12 +1,11 @@
 #!/bin/bash
-# SJM parking lot throughput calculator in jobs/minute
+# Job Lifecycle & Parking Lot Throughput Analyzer
 #
 # Author : Keegan Mullaney
 # Company: New Relic
 # Email  : kmullaney@newrelic.com
 # Website: github.com/keegoid-nr/useful-scripts
 # License: Apache License 2.0
-# --- Job Lifecycle & Parking Lot Throughput Analyzer ---
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
