@@ -1,15 +1,6 @@
 #!/bin/bash
-# Script with submission rate calculation in jobs/minute
-#
-# Author : Keegan Mullaney
-# Company: New Relic
-# Email  : kmullaney@newrelic.com
-# Website: github.com/keegoid-nr/useful-scripts
-# License: Apache License 2.0
 
-#!/bin/bash
-
-# --- Script with submission rate calculation in jobs/minute ---
+# --- Job Lifecycle & Parking Lot Throughput Analyzer ---
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
@@ -44,7 +35,7 @@ if ! [[ "$NUM_INTERVALS" =~ ^[0-9]+$ ]] || [ ! -r "$LOG_FILE" ]; then
     exit 1
 fi
 
-## --- Step 1: Find the Time Range (Using YYYY-MM-DD format) ---
+## --- Step 1: Find the Time Range ---
 echo "🔎 Finding first and last valid timestamps (YYYY-MM-DD format)..."
 time_boundaries=$(gawk '/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]{3}\{/ { if (first == "") { first = $1 " " $2 }; last = $1 " " $2 } END { print first; print last }' "$LOG_FILE")
 
@@ -76,116 +67,111 @@ BEGIN {
 }
 {
     current_epoch = 0
-    # This block attempts to parse a timestamp from the line, trying two different formats.
-    # Format 1: YYYY-MM-DD HH:MM:SS,...
+    # Unified timestamp parser
     if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2},/) {
         year = substr($1, 1, 4); month = substr($1, 6, 2); day = substr($1, 9, 2)
         hour = substr($2, 1, 2); min = substr($2, 4, 2); sec = substr($2, 7, 2)
-        mktime_str = year " " month " " day " " hour " " min " " sec
-        current_epoch = mktime(mktime_str)
-    }
-    # Format 2: [DD/Mon/YYYY:HH:MM:SS ...]
-    else if ($4 ~ /\[[0-9]{2}\/[A-Z][a-z]{2}\/[0-9]{4}:/) {
+        current_epoch = mktime(year " " month " " day " " hour " " min " " sec)
+    } else if ($4 ~ /\[[0-9]{2}\/[A-Z][a-z]{2}\/[0-9]{4}:/) {
         ts_str = $4; gsub(/\[/, "", ts_str)
         year = substr(ts_str, 8, 4); month_abbr = substr(ts_str, 4, 3); month_num = month_map[month_abbr]
         day = substr(ts_str, 1, 2); hour = substr(ts_str, 13, 2); min = substr(ts_str, 16, 2); sec = substr(ts_str, 19, 2)
-        mktime_str = year " " month_num " " day " " hour " " min " " sec
-        current_epoch = mktime(mktime_str)
+        current_epoch = mktime(year " " month_num " " day " " hour " " min " " sec)
     }
 
-    # If we successfully parsed a timestamp, process the line content
     if (current_epoch > 0) {
         bucket = int((current_epoch - start) / interval)
         if (bucket >= num_intervals) { bucket = num_intervals - 1 }
-
-        # --- NEW: Check for jobs that timed out in the parking lot ---
-        if ($0 ~ /A job was not removed from the parkinglot/) {
-            if (verbose) { print "DEBUG (Timeout):    Line " FNR ": Found a timed-out job." > "/dev/stderr" }
-            timed_out_count[bucket]++
-            next
-        }
-
-        # Check for jobs being put into the parking lot
-        if ($0 ~ /Putting job .* into the parking lot/) {
-            if (verbose) { print "DEBUG (Parking Lot): Line " FNR ": Found job being put into lot." > "/dev/stderr" }
-            put_into_lot_count[bucket]++
-            next
-        }
-
-        # Submission logic (Common Log Format)
-        if ($7 ~ /submit\/job/) {
-            if ($9 == 202) {
-                if (verbose) { print "DEBUG (Submit):   Line " FNR ": Found submission (202). Adding count: " $NF > "/dev/stderr" }
-                submitted_count[bucket] += $NF
+        
+        # --- Lifecycle Event Parsing ---
+        if ($0 ~ /is being staged for execution/) {
+            if ($0 ~ /Type: \[(SCRIPT_BROWSER|SCRIPT_API|BROWSER)\]/) {
+                staged_heavyweight_count[bucket]++;
+            } else if ($0 ~ /Type: \[SIMPLE\]/) {
+                staged_lightweight_count[bucket]++;
             }
             next
         }
+        if ($0 ~ /Putting job .* into the parking lot/) {
+            put_into_lot_count[bucket]++; next
+        }
+        if ($0 ~ /\(SIMPLE\) to Processor/) {
+            simple_job_count[bucket]++; next
+        }
+        if ($7 ~ /submit\/job/ && $9 == 202) {
+            post_202_count[bucket] += $NF; next
+        }
 
-        # Completion logic (Common Log Format)
+        # Job Retrieval (GET requests from runtimes)
         runtime = $7; sub(/.*\//, "", runtime)
         if (runtime == "script_api" || runtime == "script_browser") {
-            bytes = $NF
-            if (verbose) { print "DEBUG (Complete): Line " FNR ": Found completion for \"" runtime "\". Bytes: " bytes > "/dev/stderr" }
-            if (bytes > 0) {
-                count[bucket, runtime, 1]++ # Increment "Found" count
-            } else {
-                count[bucket, runtime, 0]++ # Increment "Not Found" count
+            http_code = $9
+            if (http_code == 200) {
+                retrieved_ok_count[bucket]++
+            } else if (http_code == 204) {
+                retrieved_empty_count[bucket]++
             }
-            runtimes[runtime] = 1
         }
     }
 }
 END {
-    grand_total_submitted = 0; grand_total_found = 0; grand_total_not_found = 0; grand_total_put_in_lot = 0; grand_total_timed_out = 0
-
+    grand_total_staged_hw = 0; grand_total_staged_lw = 0; grand_total_put_in_lot = 0
+    grand_total_retrieved_ok = 0; grand_total_retrieved_empty = 0
+    grand_total_simple = 0; grand_total_post_202 = 0
+    
     for (b = 0; b < num_intervals; b++) {
         interval_start = start + (b * interval); interval_end = interval_start + interval - 1
         if (b == num_intervals - 1) { interval_end = start + total_dur }
         print "--- 📊 Time Interval " (b+1) " of " num_intervals " (" format_time(interval_start) " to " format_time(interval_end) ") ---"
-        interval_submitted = submitted_count[b] + 0
-        interval_put_in_lot = put_into_lot_count[b] + 0
-        interval_timed_out = timed_out_count[b] + 0
-        grand_total_submitted += interval_submitted
-        grand_total_put_in_lot += interval_put_in_lot
-        grand_total_timed_out += interval_timed_out
-        has_data = 0
-        for (rt in runtimes) {
-            found = count[b, rt, 1] + 0; not_found = count[b, rt, 0] + 0; total = found + not_found
-            grand_total_found += found; grand_total_not_found += not_found
-            if (total > 0) {
-                has_data = 1
-                found_pct = sprintf("%.2f", (found / total) * 100); not_found_pct = sprintf("%.2f", (not_found / total) * 100)
-                print "   - Runtime: " rt
-                print "     Jobs Retrieved (Found): " found " (" found_pct "%)"
-                print "     Jobs Not Retrieved:     " not_found " (" not_found_pct "%)"
-            }
-        }
-        if (!has_data) { print "   (No job retrieval data in this interval)" }
+        
+        staged_hw = staged_heavyweight_count[b] + 0; grand_total_staged_hw += staged_hw
+        staged_lw = staged_lightweight_count[b] + 0; grand_total_staged_lw += staged_lw
+        put_in_lot = put_into_lot_count[b] + 0; grand_total_put_in_lot += put_in_lot
+        retrieved_ok = retrieved_ok_count[b] + 0; grand_total_retrieved_ok += retrieved_ok
+        retrieved_empty = retrieved_empty_count[b] + 0; grand_total_retrieved_empty += retrieved_empty
+        simple_jobs = simple_job_count[b] + 0; grand_total_simple += simple_jobs
+        post_202_jobs = post_202_count[b] + 0; grand_total_post_202 += post_202_jobs
+        
+        heavyweight_submitted = post_202_jobs - simple_jobs
+        throughput_rate = 0
+        if (interval > 0) { throughput_rate = (retrieved_ok / interval) * 60 }
+        
+        print "   --- Heavyweight Job Funnel ---"
+        print "   - Jobs Staged:                 " staged_hw
+        print "   - Jobs Put into Parking Lot:   " put_in_lot
+        print "   - Jobs Retrieved (200 OK):     " retrieved_ok " (" sprintf("%.2f jobs/min", throughput_rate) ")"
+        print "   - Empty Retrievals (204):      " retrieved_empty
+        print "   - Jobs Submitted:              " heavyweight_submitted
 
-        rate = 0
-        if (interval > 0) { rate = (interval_submitted / interval) * 60 }
-        print "   Jobs Put into Parking Lot:  " interval_put_in_lot
-        print "   Jobs Timed Out in Lot:      " interval_timed_out
-        print "   Jobs Submitted to New Relic: " interval_submitted
-        print "   Submission Rate:             " sprintf("%.2f jobs/min", rate)
+        print "\n   --- Lightweight Job Funnel ---"
+        print "   - Jobs Staged:                 " staged_lw
+        print "   - Jobs Submitted:              " simple_jobs
         print "----------------------------------------------------------------------"
     }
-
+    
     print "\n======================================================================"
     print "✅ OVERALL SUMMARY"
     print "======================================================================"
+    
+    overall_throughput_rate = 0
+    if (total_dur > 0) { overall_throughput_rate = (grand_total_retrieved_ok / total_dur) * 60 }
+    
+    grand_total_heavyweight_submitted = grand_total_post_202 - grand_total_simple
 
-    overall_rate = 0
-    if (total_dur > 0) { overall_rate = (grand_total_submitted / total_dur) * 60 }
-    print "Total Jobs Put into Parking Lot: " grand_total_put_in_lot
-    print "Total Jobs Timed Out in Lot:     " grand_total_timed_out
-    print "Total Jobs Submitted to New Relic: " grand_total_submitted " (" sprintf("%.2f jobs/min avg", overall_rate) ")"
-    print "Total Jobs Retrieved by Runtimes:  " grand_total_found
-    print "Total Jobs Not Retrieved:          " grand_total_not_found
-
-    accounted_for = grand_total_found + grand_total_timed_out
-    discrepancy = grand_total_put_in_lot - accounted_for
-    print "Discrepancy (Unaccounted For):   " discrepancy
+    print "--- Heavyweight Job Funnel ---"
+    print "   - Total Jobs Staged:                 " grand_total_staged_hw
+    print "   - Total Jobs Put into Lot:           " grand_total_put_in_lot
+    print "   - Total Jobs Retrieved (Throughput): " grand_total_retrieved_ok " (" sprintf("%.2f jobs/min avg", overall_throughput_rate) ")"
+    print "   - Total Jobs Submitted:              " grand_total_heavyweight_submitted
+    
+    print "\n--- Lightweight Job Funnel ---"
+    print "   - Total Jobs Staged:                 " grand_total_staged_lw
+    print "   - Total Jobs Submitted:              " grand_total_simple
+    
+    print "\n--- Parking Lot Analysis ---"
+    print "   - Total Empty Retrievals:            " grand_total_retrieved_empty
+    discrepancy = grand_total_put_in_lot - grand_total_retrieved_ok
+    print "   - Discrepancy (Put in Lot vs. Retrieved): " discrepancy
     print "======================================================================"
 }
 ' "$LOG_FILE"

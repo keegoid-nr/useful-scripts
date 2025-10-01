@@ -1,27 +1,23 @@
-# SJM Scripts
+# SJM Job Throughput Analyzer
 
 ![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg)
 
-This directory contains scripts for analyzing and manipulating logs related to the Synthetics Job Manager (SJM).
+This directory contains a script for analyzing Synthetics Job Manager (SJM) logs to calculate job throughput and track the full lifecycle of heavyweight jobs that use the "parking lot."
 
 ---
 
 ## `parking-lot-jobs.sh`
 
-This script helps assess if jobs are making their way through the job manager's "parking lot." It does this by comparing the number of **jobs put into the lot**, **jobs retrieved by runtime pods**, **jobs that time out**, and **jobs submitted to New Relic**. This is useful for diagnosing scenarios where jobs are submitted but never completed.
+This script provides a detailed analysis of the SJM job funnel to measure the throughput of jobs successfully processed by the parking lot. It tracks and groups the lifecycle stages for both heavyweight and lightweight jobs to identify potential bottlenecks or discrepancies.
 
 ### Features
 
+- **Grouped Funnel Tracking**: The output is organized into clear "Heavyweight" and "Lightweight" sections to easily compare the lifecycle of different job types.
+- **Parking Lot Focus**: Precisely measures the flow of heavyweight jobs by comparing how many are put into the lot versus how many are successfully retrieved.
+- **Throughput Calculation**: Measures the rate of successfully retrieved heavyweight jobs (`200 OK`) in jobs per minute.
 - **Time-Series Analysis**: Splits the log file's duration into a configurable number of intervals for granular analysis.
 - **Multi-Format Log Parsing**: Handles multiple log line and timestamp formats in a single pass.
-- **Full Lifecycle Tracking**: Monitors four types of events:
-    1. **Parking Lot Entry**: Counts `Putting job...` informational log lines.
-    2. **Parking Lot Timeout**: Counts `A job was not removed...` error log lines.
-    3. **Job Retrieval**: Tracks `GET` requests from runtime pods for `script_api` and `script_browser` jobs.
-    4. **Job Submission**: Tracks `POST` requests to `/api/v1/submit/job` where results are sent to New Relic.
-- **Rate Calculation**: Calculates the jobs submitted per minute for each interval and as an overall average.
-- **Detailed Summaries**: Provides both per-interval breakdowns and a final, overall summary of the entire log file.
-- **Verbose Debug Mode**: Includes a `--verbose` flag to print detailed, line-by-line processing information for easy verification.
+- **Verbose Debug Mode**: Includes a `--verbose` flag for detailed, line-by-line processing information.
 
 ### Prerequisites
 
@@ -38,19 +34,23 @@ This script requires **GNU Awk** (`gawk`) for its advanced time-handling functio
 
 - **`<path_to_log_file>`**: The SJM log file to analyze.
 - **`[number_of_intervals]`**: Optional. The number of time intervals to split the analysis into. Defaults to 5.
-- **`--verbose`**: Optional. Enables verbose logging to show line-by-line processing details.
+- **`--verbose`**: Optional. Enables verbose logging.
 
 ### Understanding the Logic
 
-The script uses a hybrid approach to determine the outcome of each log line:
+The script identifies the stage of a job's lifecycle based on distinct patterns in the log file:
 
-- **Job Put into Parking Lot**: Counted when a line matches the pattern `"Putting job .* into the parking lot"`.
-- **Job Timed Out**: Counted when a line matches the pattern `"A job was not removed from the parkinglot"`.
-- **Job Submitted to New Relic**: A `POST` to `/api/v1/submit/job` is counted if it has a **`202 Accepted`** response code. The script sums the number at the end of these lines for the total count.
-- **Job Retrieved (Found)**: A `GET` request for `script_api` or `script_browser` is counted as "Found" if its **response size** (the final number on the line) is **greater than 0**.
-- **Job Not Retrieved (Not Found)**: A `GET` request is counted as "Not Found" if its **response size** is **exactly 0**.
+| Stage                         | Log Line Indicator                                                                                                  |
+|-------------------------------|---------------------------------------------------------------------------------------------------------------------|
+| **Heavyweight Job Staged**    | Contains `"is being staged for execution"` and Type: `[SCRIPT_API]`, `[SCRIPT_BROWSER]`, or `[BROWSER]` |
+| **Lightweight Job Staged**    | Contains `"is being staged for execution"` and Type: `[SIMPLE]`                                                     |
+| **Put into Lot** (Input)      | Contains `"Putting job .* into the parking lot"`                                                                    |
+| **Retrieved** (Throughput)    | A `GET` request with HTTP response code **`200 OK`**                                                                |
+| **Not Retrieved (Empty)**     | A `GET` request with HTTP response code **`204 No Content`**                                                        |
+| **Lightweight Job Submitted** | Contains `"(SIMPLE) to Processor"`                                                                                  |
+| **Heavyweight Job Submitted** | Calculated as `(Total POST 202 Submissions) - (Total Lightweight Jobs)`                                             |
 
-The "Discrepancy" in the final summary is calculated as `(Jobs Put into Lot) - (Jobs Retrieved + Jobs Timed Out)`.
+The primary **Discrepancy** is calculated as `(Jobs Put into Lot) - (Jobs Retrieved)`
 
 ---
 
