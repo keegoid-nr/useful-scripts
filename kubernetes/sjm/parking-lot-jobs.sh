@@ -146,11 +146,11 @@ END {
         print "   - Jobs Put into Parking Lot:   " put_in_lot
         print "   - Jobs Retrieved (200 OK):     " retrieved_ok " (" sprintf("%.2f jobs/min", throughput_rate) ")"
         print "   - Empty Retrievals (204):      " retrieved_empty
-        print "   - Jobs Submitted:              " heavyweight_submitted
+        print "   - Jobs Submitted (202):        " heavyweight_submitted
 
         print "\n   --- Lightweight Job Funnel ---"
         print "   - Jobs Staged:                 " staged_lw
-        print "   - Jobs Submitted:              " simple_jobs
+        print "   - Jobs Submitted (202):        " simple_jobs
         print "----------------------------------------------------------------------"
     }
     
