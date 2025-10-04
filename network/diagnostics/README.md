@@ -1,5 +1,7 @@
 # New Relic Infrastructure Agent Network Diagnostics Scripts
 
+![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg) &nbsp; &nbsp; ![Language](https://img.shields.io/badge/language-PowerShell-012456.svg)
+
 This directory contains scripts designed to help diagnose network connectivity issues between a host and the New Relic platform, specifically for the Infrastructure agent.
 
 These scripts are intended to be run on the host where the Infrastructure agent is experiencing issues. They collect a variety of network and system information, run connectivity tests to New Relic endpoints, and package the results into a compressed archive for easy sharing with New Relic support.
@@ -72,4 +74,4 @@ Please attach this compressed archive to your New Relic support case.
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](../../LICENSE) file for details.
+This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.

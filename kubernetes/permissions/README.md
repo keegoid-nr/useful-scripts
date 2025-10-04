@@ -1,5 +1,7 @@
 # Pod Permission Inspector
 
+![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg)
+
 A command-line utility to run a suite of diagnostic checks inside a running Kubernetes pod to troubleshoot permissions, capabilities, and configuration issues.
 
 ## Features ✨
@@ -59,4 +61,4 @@ The script runs the following commands inside the container:
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](../../LICENSE) file for details.
+This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.

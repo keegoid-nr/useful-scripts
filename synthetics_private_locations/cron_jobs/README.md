@@ -1,6 +1,8 @@
 # New Relic Synthetics Job Manager (SJM) Cron Job Scripts
 
-This directory contains scripts designed to be run as cron jobs to ensure the New Relic Synthetics Job Manager (SJM) container is always running. These scripts check for the existence of the SJM container and will start it fresh with each cron run for improved reliability and regular updates.
+![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg)
+
+The cron jobs scripts help to ensure the SJM container runs reliability and gets regular updates.
 
 ## Scripts
 
@@ -24,21 +26,21 @@ This directory contains scripts designed to be run as cron jobs to ensure the Ne
 
 2. **Schedule the Script with Cron**
 
-    Add the appropriate script to your crontab to run at a regular interval. For example, to run the script every week, you would add the following line to your crontab (edited with `crontab -e`):
+   Add the appropriate script to your crontab to run at a regular interval. For example, to run the script every Sunday at 2 AM, you would add the following line to your crontab (edited with `crontab -e`):
 
-    **For Docker:**
+   ```crontab
+   0 2 * * 0 /path/to/sjm_cron_job.sh
+   ```
 
-    ```crontab
-    0 2 * * 0 /path/to/sjm_cron_job.sh
-    ```
+   |      Field       | Value |                    Meaning                    |
+   |:----------------:|:-----:|:---------------------------------------------:|
+   |    **Minute**    |  `0`  |   At the beginning of the hour (minute 0).    |
+   |     **Hour**     |  `2`  |                   At 2 AM.                    |
+   | **Day of Month** |  `*`  |            Every day of the month.            |
+   |    **Month**     |  `*`  |                 Every month.                  |
+   | **Day of Week**  |  `0`  | Sunday (where 0 and 7 both represent Sunday). |
 
-    **For Podman:**
-
-    ```crontab
-    0 2 * * 0 /path/to/sjm_cron_job_podman.sh
-    ```
-
-    *Note: Ensure the script is executable (`chmod +x <script_name>`).*
+   *(Note: Ensure the script is executable (`chmod +x <script_name>`))*
 
 ## How It Works
 
@@ -63,4 +65,4 @@ This entire process, when run on a regular cron schedule, provides several benef
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](../../LICENSE) file for details.
+This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.

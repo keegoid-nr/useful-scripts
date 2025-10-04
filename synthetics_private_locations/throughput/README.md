@@ -66,3 +66,7 @@ This script filters an SJM log file to remove "ping" or "(SIMPLE)" jobs, which a
 
 - **`[input_log_file]`**: Optional. The log file to filter. Defaults to `your_log_file.log`.
 - **`[output_log_file]`**: Optional. The name of the filtered output file. Defaults to `filtered_log.log`.
+
+## License
+
+This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
