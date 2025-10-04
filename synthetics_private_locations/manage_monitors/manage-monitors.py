@@ -1,3 +1,14 @@
+# ----------------------------------------------
+# New Relic Synthetics Monitor Manager
+# Manage your monitors via NerdGraph!
+#
+# Author : Keegan Mullaney
+# Company: New Relic
+# Email  : kmullaney@newrelic.com
+# Website: github.com/keegoid-nr/useful-scripts
+# License: Apache License 2.0
+# ----------------------------------------------
+
 import httpx
 import os
 import sys
