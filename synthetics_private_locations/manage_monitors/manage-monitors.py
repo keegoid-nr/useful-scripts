@@ -17,6 +17,7 @@ import json
 import argparse
 import secrets
 import random
+from datetime import datetime
 
 # --- Configuration (read from environment variables) ---
 API_KEY = os.getenv("NEW_RELIC_API_KEY")
@@ -29,6 +30,7 @@ class Colors:
     YELLOW = '\033[93m'
     CYAN = '\033[96m'
     GREEN = '\033[92m'
+    RED = '\033[91m'
     MAGENTA = '\033[95m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
@@ -62,93 +64,72 @@ SYNTHETIC_BROWSER_SCRIPT_TPL = (
 )
 
 # --- Helper Functions ---
-def make_nerdgraph_request(mutation):
-    """Sends a mutation and returns a tuple (success: bool, error_message: str|None)."""
+def make_nerdgraph_request(query, variables=None):
+    """Sends a request and returns a tuple (success: bool, payload: dict|None)."""
     headers = {"API-Key": API_KEY, "Content-Type": "application/json"}
+    
+    payload = {"query": query}
+    if variables:
+        payload["variables"] = variables
+
     try:
         with httpx.Client() as client:
-            response = client.post(NERDGRAPH_URL, headers=headers, json={"query": mutation})
+            response = client.post(NERDGRAPH_URL, headers=headers, json=payload)
             response.raise_for_status()
         result = response.json()
-        if result.get("data") and result["data"].get(next(iter(result["data"]))) and result["data"][next(iter(result["data"]))].get("errors"):
-            return False, json.dumps(result['data'][next(iter(result['data']))]['errors'])
-        elif result.get("errors"):
-            return False, json.dumps(result['errors'])
-        return True, None
+        if result.get("errors"):
+            return False, {"error": json.dumps(result['errors'])}
+        if "data" in result and result["data"]:
+             first_key = next(iter(result["data"]))
+             if result["data"][first_key] and "errors" in result["data"][first_key]:
+                 if result["data"][first_key]["errors"]:
+                    return False, {"error": json.dumps(result['data'][first_key]['errors'])}
+        return True, result.get("data")
     except httpx.HTTPStatusError as e:
-        return False, f"HTTP Error: {e.response.status_code} - {e.response.text}"
+        return False, {"error": f"HTTP Error: {e.response.status_code} - {e.response.text}"}
     except Exception as e:
-        return False, f"An unexpected error occurred: {e}"
+        return False, {"error": f"An unexpected error occurred: {e}"}
 
 # --- Creation Logic ---
 def create_ping_monitor(name, url, location_guid, period):
     print(f"  Creating SIMPLE monitor: '{name}'...", end="", flush=True)
     mutation = f'''mutation{{syntheticsCreateSimpleMonitor(accountId:{ACCOUNT_ID},monitor:{{name:"{name}",uri:"{url}",locations:{{private:["{location_guid}"]}},period:{period},status:ENABLED,tags:[{{key:"ManagedBy",values:["BulkScript"]}}]}}){{errors{{description}}}}}}'''
-    success, error_msg = make_nerdgraph_request(mutation)
-    print(f"\r✅" if success else f"\r❌\n     └─ Error: {error_msg}")
+    success, payload = make_nerdgraph_request(mutation)
+    print(f"\r✅" if success else f"\r❌\n     └─ Error: {payload.get('error')}")
 
 def create_simple_browser_monitor(name, url, location_guid, period):
     print(f"  Creating BROWSER monitor: '{name}'...", end="", flush=True)
     mutation = f'''mutation{{syntheticsCreateSimpleBrowserMonitor(accountId:{ACCOUNT_ID},monitor:{{name:"{name}",uri:"{url}",locations:{{private:["{location_guid}"]}},period:{period},status:ENABLED,tags:[{{key:"ManagedBy",values:["BulkScript"]}}],advancedOptions:{{enableScreenshotOnFailureAndScript:true}}}}){{errors{{description}}}}}}'''
-    success, error_msg = make_nerdgraph_request(mutation)
-    print(f"\r✅" if success else f"\r❌\n     └─ Error: {error_msg}")
+    success, payload = make_nerdgraph_request(mutation)
+    print(f"\r✅" if success else f"\r❌\n     └─ Error: {payload.get('error')}")
 
 def create_scripted_browser_monitor(name, url, location_guid, period):
     print(f"  Creating SCRIPT_BROWSER monitor: '{name}'...", end="", flush=True)
     script_text = SYNTHETIC_BROWSER_SCRIPT_TPL % url
     json_escaped_script = json.dumps(script_text)
     mutation = f'''mutation{{syntheticsCreateScriptBrowserMonitor(accountId:{ACCOUNT_ID},monitor:{{name:"{name}",locations:{{private:[{{guid:"{location_guid}"}}]}},period:{period},status:ENABLED,script:{json_escaped_script},runtime:{{runtimeType:"CHROME_BROWSER",runtimeTypeVersion:"100",scriptLanguage:"JAVASCRIPT"}},tags:[{{key:"ManagedBy",values:["BulkScript"]}}],advancedOptions:{{enableScreenshotOnFailureAndScript:true}}}}){{errors{{description}}}}}}'''
-    success, error_msg = make_nerdgraph_request(mutation)
-    print(f"\r✅" if success else f"\r❌\n     └─ Error: {error_msg}")
+    success, payload = make_nerdgraph_request(mutation)
+    print(f"\r✅" if success else f"\r❌\n     └─ Error: {payload.get('error')}")
 
 def create_scripted_api_monitor(name, url, location_guid, period):
     print(f"  Creating SCRIPT_API monitor: '{name}'...", end="", flush=True)
     script_text = SYNTHETIC_API_SCRIPT_TPL % url
     json_escaped_script = json.dumps(script_text)
     mutation = f'''mutation{{syntheticsCreateScriptApiMonitor(accountId:{ACCOUNT_ID},monitor:{{name:"{name}",locations:{{private:[{{guid:"{location_guid}"}}]}},period:{period},status:ENABLED,script:{json_escaped_script},runtime:{{runtimeType:"NODE_API",runtimeTypeVersion:"16.10",scriptLanguage:"JAVASCRIPT"}},tags:[{{key:"ManagedBy",values:["BulkScript"]}}]}}){{errors{{description}}}}}}'''
-    success, error_msg = make_nerdgraph_request(mutation)
-    print(f"\r✅" if success else f"\r❌\n     └─ Error: {error_msg}")
+    success, payload = make_nerdgraph_request(mutation)
+    print(f"\r✅" if success else f"\r❌\n     └─ Error: {payload.get('error')}")
 
 # --- Management Logic ---
 def find_monitors_by_tag():
     """Finds all monitors with the 'ManagedBy: BulkScript' tag."""
     print("🔍 Finding monitors with tag 'ManagedBy:BulkScript'...")
     search_query = f"accountId = {ACCOUNT_ID} AND tags.ManagedBy = 'BulkScript' AND domain = 'SYNTH'"
-    # UPDATED: The GraphQL query now also fetches the 'period' of each monitor.
-    query = f"""
-    query {{
-      actor {{
-        entitySearch(query: "{search_query}") {{
-          results {{
-            entities {{
-              guid
-              name
-              ... on SyntheticMonitorEntityOutline {{
-                monitorType
-                monitorId
-                period
-                monitorSummary {{
-                  status
-                }}
-              }}
-            }}
-          }}
-        }}
-      }}
-    }}
-    """
-    headers = {"API-Key": API_KEY, "Content-Type": "application/json"}
-    try:
-        with httpx.Client() as client:
-            response = client.post(NERDGRAPH_URL, headers=headers, json={"query": query})
-            response.raise_for_status()
-        data = response.json()
-        if data.get("errors"):
-            print(f"    ❌ GraphQL Error: {data['errors']}")
-            return []
-        return data["data"]["actor"]["entitySearch"]["results"]["entities"]
-    except Exception as e:
-        print(f"    ❌ An error occurred while finding monitors: {e}")
+    query = f"""query{{actor{{entitySearch(query:"{search_query}"){{results{{entities{{guid name...on SyntheticMonitorEntityOutline{{monitorType monitorId period monitorSummary{{status}}}}}}}}}}}}}}"""
+    success, payload = make_nerdgraph_request(query)
+    if success:
+        return payload["actor"]["entitySearch"]["results"]["entities"]
+    else:
+        print(f"    ❌ GraphQL Error: {payload.get('error')}")
         return []
 
 def update_monitor_status(guid, name, monitor_type, monitor_id, status):
@@ -160,110 +141,146 @@ def update_monitor_status(guid, name, monitor_type, monitor_id, status):
         print(f"\r❓ Unknown monitor type '{monitor_type}'. Skipping.")
         return
     mutation = f"""mutation{{ {mutation_name}(guid:"{guid}",monitor:{{status:{status}}}){{errors{{description}}}}}}"""
-    success, error_msg = make_nerdgraph_request(mutation)
-    print(f"\r✅" if success else f"\r❌\n     └─ Error: {error_msg}")
+    success, payload = make_nerdgraph_request(mutation)
+    print(f"\r✅" if success else f"\r❌\n     └─ Error: {payload.get('error')}")
 
 def delete_monitor(guid, name, monitor_id):
     print(f"  Deleting monitor '{name}' (ID: {monitor_id})...", end="", flush=True)
     mutation = f"""mutation{{syntheticsDeleteMonitor(guid:"{guid}"){{deletedGuid}}}}"""
-    success, error_msg = make_nerdgraph_request(mutation)
-    print(f"\r✅" if success else f"\r❌\n     └─ Error: {error_msg}")
+    success, payload = make_nerdgraph_request(mutation)
+    print(f"\r✅" if success else f"\r❌\n     └─ Error: {payload.get('error')}")
 
 def parse_selection(selection_str, max_index):
-    """Parses a selection string like '1-3,5' into a set of indices."""
     selected_indices = set()
     selection_str = selection_str.strip()
     if not selection_str or selection_str.upper() == 'ALL':
         return set(range(1, max_index + 1))
-
     parts = selection_str.split(',')
     for part in parts:
         part = part.strip()
-        if not part:
-            continue
+        if not part: continue
         if '-' in part:
             try:
                 start, end = map(int, part.split('-'))
-                if start > end or start < 1 or end > max_index:
-                    raise ValueError
+                if start > end or start < 1 or end > max_index: raise ValueError
                 selected_indices.update(range(start, end + 1))
             except ValueError:
                 print(f"⚠️ Invalid range '{part}'. Skipping.")
-                continue
         else:
             try:
                 num = int(part)
-                if 1 <= num <= max_index:
-                    selected_indices.add(num)
-                else:
-                    raise ValueError
+                if 1 <= num <= max_index: selected_indices.add(num)
+                else: raise ValueError
             except ValueError:
                 print(f"⚠️ Invalid number '{part}'. Skipping.")
                 continue
     return selected_indices
 
+def handle_check_results(args):
+    """Fetches and displays a summary of SyntheticCheck results."""
+    validate_env_vars()
+    
+    minutes_str = input("\nHow many minutes back to check for results? (Default: 30)\n> ")
+    minutes_back = int(minutes_str) if minutes_str.isdigit() and int(minutes_str) > 0 else 30
+    
+    print(f"\n🔍 Fetching results summary for the last {minutes_back} minutes...")
+    
+    type_filter = ""
+    if args.types and "ALL" not in args.types:
+        formatted_types = ", ".join([f"'{t}'" for t in args.types])
+        type_filter = f"AND type IN ({formatted_types})"
+
+    nrql_query = f"FROM SyntheticCheck SELECT round(rate(count(*), 1 minute), 0.1) AS 'jobsPerMinute' WHERE tags.ManagedBy = 'BulkScript' {type_filter} FACET result, typeLabel SINCE {minutes_back} minutes ago"
+    
+    graphql_query_template = f"""
+    query($nrqlQuery: Nrql!) {{
+      actor {{
+        account(id: {ACCOUNT_ID}) {{
+          nrql(query: $nrqlQuery) {{
+            results
+          }}
+        }}
+      }}
+    }}
+    """
+    
+    variables = {"nrqlQuery": nrql_query}
+    success, payload = make_nerdgraph_request(graphql_query_template, variables=variables)
+    
+    if not success or not payload:
+        print(f"❌ Could not fetch results: {payload.get('error')}")
+        return
+
+    results = payload.get("actor", {}).get("account", {}).get("nrql", {}).get("results", [])
+    
+    # Restored the full, correct logic for parsing faceted results.
+    if not results:
+        print(f"\n✅ No SyntheticCheck results found for the specified monitors in the last {minutes_back} minutes.")
+        return
+
+    print(f"\n--- Results Summary (SINCE {minutes_back} minutes ago) ---")
+    header = f"{'Result':<12} {'Type Label':<20} {'Jobs per Minute'}"
+    print(f"{Colors.BOLD}{header}{Colors.ENDC}")
+    print("-" * len(header))
+
+    results.sort(key=lambda x: x.get('facet', [''])[0])
+
+    heavyweight_total = 0.0
+    lightweight_total = 0.0
+    heavyweight_type_labels = {'Simple Browser', 'Scripted Browser', 'Scripted API'}
+
+    for item in results:
+        result, type_label = item['facet']
+        jobs_per_minute = item.get('jobsPerMinute', 0.0) or 0.0
+        
+        if type_label in heavyweight_type_labels:
+            heavyweight_total += jobs_per_minute
+        elif type_label == 'Ping':
+            lightweight_total += jobs_per_minute
+
+        result_color = Colors.GREEN if result == 'SUCCESS' else Colors.RED
+        # UPDATED: Formatted jobs_per_minute to display one decimal place.
+        print(f"{result_color}{result:<12}{Colors.ENDC} {Colors.CYAN}{type_label:<20}{Colors.ENDC} {jobs_per_minute:.1f}")
+    
+    print(f"\n--- Throughput Summary ---")
+    print(f"  - {Colors.BOLD}Heavyweight Total:{Colors.ENDC} {round(heavyweight_total, 1)} jobs/min")
+    print(f"  - {Colors.BOLD}Lightweight Total:{Colors.ENDC} {round(lightweight_total, 1)} jobs/min")
+
+
 # --- Main Execution ---
 if __name__ == "__main__":
-    MONITOR_TYPE_MAP = {
-        "SIMPLE": create_ping_monitor,
-        "BROWSER": create_simple_browser_monitor,
-        "SCRIPT_BROWSER": create_scripted_browser_monitor,
-        "SCRIPT_API": create_scripted_api_monitor,
-    }
-
-    PERIOD_OPTIONS = {
-        "1": "EVERY_MINUTE", "2": "EVERY_5_MINUTES", "3": "EVERY_10_MINUTES",
-        "4": "EVERY_15_MINUTES", "5": "EVERY_30_MINUTES", "6": "EVERY_HOUR",
-        "7": "EVERY_6_HOURS", "8": "EVERY_12_HOURS", "9": "EVERY_DAY",
-    }
+    MONITOR_TYPE_MAP = { "SIMPLE": create_ping_monitor, "BROWSER": create_simple_browser_monitor, "SCRIPT_BROWSER": create_scripted_browser_monitor, "SCRIPT_API": create_scripted_api_monitor }
+    PERIOD_OPTIONS = { "1": "EVERY_MINUTE", "2": "EVERY_5_MINUTES", "3": "EVERY_10_MINUTES", "4": "EVERY_15_MINUTES", "5": "EVERY_30_MINUTES", "6": "EVERY_HOUR", "7": "EVERY_6_HOURS", "8": "EVERY_12_HOURS", "9": "EVERY_DAY" }
 
     parser = argparse.ArgumentParser(description="Create or manage New Relic Synthetics monitors.")
     parser.add_argument("-t", "--types", nargs="+", choices=list(MONITOR_TYPE_MAP.keys()) + ["ALL"], help="Specify monitor types for the chosen action.")
     args = parser.parse_args()
 
-    # --- Main Menu ---
     print("\nChoose an action:")
-    print("  1. Create monitors")
-    print("  2. Enable monitors")
-    print("  3. Disable monitors")
-    print("  4. Delete monitors")
-
+    print("  1. Create monitors\n  2. Enable monitors\n  3. Disable monitors\n  4. Delete monitors\n  5. Check Results")
     choice = ""
-    while choice not in ["1", "2", "3", "4"]:
-        choice = input("\nEnter your choice (1, 2, 3, or 4): ")
+    while choice not in ["1", "2", "3", "4", "5"]:
+        choice = input("\nEnter your choice (1, 2, 3, 4, or 5): ")
 
     if choice == "1":
         validate_env_vars(for_creation=True)
-        if args.types:
-            types_to_create = list(MONITOR_TYPE_MAP.keys()) if "ALL" in args.types else args.types
-        else:
-            types_to_create = list(MONITOR_TYPE_MAP.keys())
-
+        types_to_create = list(MONITOR_TYPE_MAP.keys()) if not args.types or "ALL" in args.types else args.types
         quantity_str = input("\nHow many of each type to create? (Default: 1)\n> ")
         quantity = int(quantity_str) if quantity_str.isdigit() and int(quantity_str) > 0 else 1
-
         print("\nSelect a monitoring period:")
-        for key, value in PERIOD_OPTIONS.items():
-            print(f"  {key}. {value}")
+        for key, value in PERIOD_OPTIONS.items(): print(f"  {key}. {value}")
         period_choice = ""
         while period_choice not in PERIOD_OPTIONS:
             period_choice = input("Enter your choice (Default: 4 for EVERY_15_MINUTES): ")
-            if not period_choice:
-                period_choice = "4"
+            if not period_choice: period_choice = "4"
         selected_period = PERIOD_OPTIONS[period_choice]
-
         try:
-            with open('monitors.json', 'r') as f:
-                monitor_definitions = json.load(f)
+            with open('monitors.json', 'r') as f: monitor_definitions = json.load(f)
         except FileNotFoundError:
-            print("❌ Error: `monitors.json` not found. Please create it first.")
-            sys.exit(1)
-
+            print("❌ Error: `monitors.json` not found."); sys.exit(1)
         print(f"\n🚀 Starting bulk monitor creation for Account ID: {ACCOUNT_ID}")
         for type_name in types_to_create:
-            if type_name not in MONITOR_TYPE_MAP:
-                print(f"⚠️ Skipping unknown type: {type_name}")
-                continue
+            if type_name not in MONITOR_TYPE_MAP: print(f"⚠️ Skipping unknown type: {type_name}"); continue
             create_function = MONITOR_TYPE_MAP[type_name]
             print(f"\n--- Creating {quantity} {type_name} monitor(s) with period {selected_period} ---")
             for _ in range(quantity):
@@ -274,61 +291,44 @@ if __name__ == "__main__":
                 time.sleep(0.5)
         print("\n✨ Creation complete.")
 
+    elif choice == "5":
+        handle_check_results(args)
+
     else: # Management Actions
         validate_env_vars()
         all_monitors = find_monitors_by_tag()
-
         types_to_filter = args.types
         if types_to_filter and "ALL" not in types_to_filter:
             monitors_to_manage = [m for m in all_monitors if m.get('monitorType') in types_to_filter]
         else:
             monitors_to_manage = all_monitors
-
         action_map = { "2": {"verb": "enable", "status": "ENABLED"}, "3": {"verb": "disable", "status": "DISABLED"}, "4": {"verb": "delete"} }
         action_details = action_map[choice]
         action_verb = action_details["verb"]
-
         if action_verb == "enable":
             monitors_to_manage = [m for m in monitors_to_manage if m.get('monitorSummary', {}).get('status') == 'DISABLED']
         elif action_verb == "disable":
             monitors_to_manage = [m for m in monitors_to_manage if m.get('monitorSummary', {}).get('status') == 'ENABLED']
-
         monitors_to_manage.sort(key=lambda m: (m.get('monitorType', ''), m.get('name', '')))
-
         if not monitors_to_manage:
-            print("✅ No monitors found matching the criteria for this action.")
-            sys.exit(0)
-
+            print("✅ No monitors found matching the criteria for this action."); sys.exit(0)
         max_name_len = max(len(m['name']) for m in monitors_to_manage) if monitors_to_manage else 0
-
         print("\nMonitors found:")
         for i, m in enumerate(monitors_to_manage, 1):
             status = m.get('monitorSummary', {}).get('status', 'UNKNOWN')
             status_color = Colors.GREEN if status == 'ENABLED' else Colors.YELLOW
             period = m.get('period', 'UNKNOWN')
-
             name_part = f"  {i}. {m['name']}"
-            # UPDATED: Added the formatted period to the details part of the string.
-            details_part = (f"({Colors.BOLD}Status:{Colors.ENDC} {status_color}{status}{Colors.ENDC}, "
-                            f"{Colors.BOLD}Type:{Colors.ENDC} {Colors.CYAN}{m.get('monitorType')}{Colors.ENDC}, "
-                            f"{Colors.BOLD}Period:{Colors.ENDC} {Colors.MAGENTA}{period}{Colors.ENDC}, "
-                            f"{Colors.BOLD}ID:{Colors.ENDC} {m.get('monitorId')})")
-
+            details_part = (f"({Colors.BOLD}Status:{Colors.ENDC} {status_color}{status}{Colors.ENDC}, {Colors.BOLD}Type:{Colors.ENDC} {Colors.CYAN}{m.get('monitorType')}{Colors.ENDC}, {Colors.BOLD}Period:{Colors.ENDC} {Colors.MAGENTA}{period}{Colors.ENDC}, {Colors.BOLD}ID:{Colors.ENDC} {m.get('monitorId')})")
             print(f"{name_part:<{max_name_len + 6}} {details_part}")
-
         selection_str = input("\nWhich monitors to act on? (e.g., 1-3, 5, 8 or press Enter for ALL): ")
         selected_indices = parse_selection(selection_str, len(monitors_to_manage))
-
         if not selected_indices:
-            print("\n❌ No valid monitors selected. Action cancelled.")
-            sys.exit(0)
-
+            print("\n❌ No valid monitors selected. Action cancelled."); sys.exit(0)
         selected_monitors = [monitors_to_manage[i-1] for i in sorted(list(selected_indices))]
-
         confirm_word = action_verb.upper()
         print(f"\nThis action will {action_verb} the {len(selected_monitors)} selected monitor(s).")
         confirm = input(f"Type '{confirm_word}' to proceed: ")
-
         if confirm == confirm_word:
             print(f"\n🚀 Starting {action_verb} process...")
             for monitor in selected_monitors:
