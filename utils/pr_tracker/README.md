@@ -1,4 +1,4 @@
-# GitHub PR Tracker
+# GitHub PR Contributor Tracker
 
 ![Language](https://img.shields.io/badge/language-Python-3776AB.svg)
 
@@ -7,7 +7,7 @@ A Python script to track merged pull requests for a specific group of authors in
 ## Features
 
 * **Custom Timeframe**: Track merged PRs within a user-defined timeframe (e.g., the last 6 months).
-* **Targeted Author List**: Filter contributions by a specific list of authors managed in a simple `authors.json` file.
+* **Targeted Author List**: Filter contributions by a specific list of authors managed in a simple `authors.csv` file.
 * **Key Metrics**: Display total contributions, unique contributors, PRs per author, and PRs per month.
 * **Robust API Handling**: Gracefully handles GitHub API limitations like rate limits and search result caps.
 
@@ -43,16 +43,13 @@ A Python script to track merged pull requests for a specific group of authors in
     **Note on SSO**: Some organizations, including New Relic, require you to authorize your Personal Access Token for use with SSO. After creating your token, you may need to click "Configure SSO" or "Authorize" next to its name on the [tokens page](https://github.com/settings/tokens) to grant it access.
 
 2. **Define Authors**
-    Create a file named `authors.json` in the project directory. Add the GitHub usernames of the engineers you want to track in the following format:
+    Create a file named `authors.csv` in the project directory. It must contain a single column header named `username`. Add the GitHub usernames of the engineers you want to track, one per line:
 
-    ```json
-    {
-      "authors": [
-        "github-username-1",
-        "github-username-2",
-        "another-user"
-      ]
-    }
+    ```csv
+    username
+    github-username-1
+    github-username-2
+    another-user
     ```
 
 3. **Change Target Repository (Optional)**
@@ -69,7 +66,7 @@ A Python script to track merged pull requests for a specific group of authors in
 2. When prompted, enter the number of months you wish to search back and press Enter.
 
     ```bash
-    Enter the number of months to search: 12
+    Enter the number of months to search: 6
     ```
 
 ### Example Output
@@ -99,7 +96,3 @@ another-user: 15
 2025-09: 16
 2025-10: 5
 ```
-
-## License
-
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.

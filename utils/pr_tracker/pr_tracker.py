@@ -9,7 +9,7 @@
 import httpx
 import os
 import time
-import json
+import csv  # Import the csv library
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict, Counter
@@ -20,22 +20,25 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 REPO_OWNER = "newrelic"
 REPO_NAME = "docs-website"
 
+# --- NEW: Load authors from the CSV file ---
+AUTHORS = []
 try:
-    with open('authors.json', 'r') as f:
-        author_data = json.load(f)
-        AUTHORS = author_data.get("authors", [])
+    with open('authors.csv', mode='r', encoding='utf-8') as f:
+        csv_reader = csv.DictReader(f)
+        for row in csv_reader:
+            # Check if the 'username' column exists and is not empty
+            if row.get('username'):
+                AUTHORS.append(row['username'])
 except FileNotFoundError:
-    print("Error: 'authors.json' not found. Please create it.")
-    AUTHORS = []
-except json.JSONDecodeError:
-    print("Error: Could not decode 'authors.json'. Please check for syntax errors.")
-    AUTHORS = []
+    print("Error: 'authors.csv' not found. Please create it with a 'username' header.")
+except Exception as e:
+    print(f"An error occurred while reading 'authors.csv': {e}")
 
 
-# --- SCRIPT ---
+# --- SCRIPT (The rest of the script is unchanged) ---
 
 def create_date_ranges(start_date, end_date):
-    # ... (this function is unchanged)
+    # ...
     ranges = []
     current_date = start_date
     while current_date < end_date:
@@ -46,7 +49,7 @@ def create_date_ranges(start_date, end_date):
     return ranges
 
 def get_merged_prs(owner, repo, token, start_date):
-    # ... (this function is unchanged)
+    # ...
     all_prs = []
     date_ranges = create_date_ranges(start_date, datetime.now())
 
@@ -76,7 +79,7 @@ def get_merged_prs(owner, repo, token, start_date):
     return all_prs
 
 def analyze_prs(prs, authors):
-    # ... (this function is unchanged)
+    # ...
     filtered_prs = [pr for pr in prs if pr["user"]["login"] in authors]
     unique_contributors = set(pr["user"]["login"] for pr in filtered_prs)
     prs_per_month = defaultdict(int)
@@ -96,12 +99,11 @@ def analyze_prs(prs, authors):
     }
 
 def main():
-    """Main function to run the script."""
+    # ...
     if not GITHUB_TOKEN or not AUTHORS:
-        print("Error: GITHUB_TOKEN must be set and the authors list cannot be empty.")
+        print("Error: GITHUB_TOKEN must be set and the authors list from authors.csv cannot be empty.")
         return
 
-    # --- NEW: Prompt user for the number of months ---
     while True:
         try:
             months_to_search = int(input("Enter the number of months to search: "))
