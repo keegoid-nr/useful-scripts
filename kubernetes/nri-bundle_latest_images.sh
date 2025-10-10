@@ -1,45 +1,77 @@
 #!/bin/bash
-# Quickly check latest nri-bundle sub chart image versions.
-#
-# Author : Keegan Mullaney
-# Company: New Relic
-# Email  : kmullaney@newrelic.com
-# Website: github.com/keegoid-nr/useful-scripts
-# License: Apache License 2.0
+# shellcheck disable=SC2016
+: '
+New Relic Bundle Chart Image Inspector
+
+This script fetches the latest `nri-bundle` Helm chart and inspects it to
+discover all container images and their versions used across its various
+sub-charts. It renders the chart templates locally without needing a live
+Kubernetes cluster and parses the output to group images by the sub-chart
+they belong to.
+
+This is useful for quickly verifying image versions before a deployment or for
+security scanning purposes.
+
+It performs the following actions:
+- Checks for required command-line tools (helm, awk, etc.).
+- Adds and updates the New Relic Helm chart repository.
+- Fetches and unpacks the `nri-bundle` chart into a temporary directory.
+- Renders the Helm templates for all enabled sub-charts.
+- Parses the template output to extract and list all unique container images.
+- Prints a final, formatted list of images grouped by their respective chart.
+
+Author : Keegan Mullaney
+Company: New Relic
+Email  : kmullaney@newrelic.com
+Website: github.com/keegoid-nr/useful-scripts
+License: Apache License 2.0
+'
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-# Define the Helm chart to inspect.
+# --- Configuration ---
 CHART_NAME="nri-bundle"
 REPO_NAME="newrelic"
 REPO_URL="https://helm-charts.newrelic.com"
 RELEASE_NAME="nri-bundle-release" # A temporary release name for templating
 
-# Create a temporary directory for our work
+# --- Colors ---
+# Only use colors if outputting to a terminal
+if [ -t 1 ]; then
+  BOLD="\033[1m"
+  SUCCESS_GREEN="\033[1;32m"
+  YELLOW="\033[1;33m"
+  CYAN="\033[1;36m"
+  WHITE="\033[1;37m"
+  RED="\033[1;31m"
+  RESET="\033[0m"
+else
+  BOLD=""
+  SUCCESS_GREEN=""
+  YELLOW=""
+  CYAN=""
+  WHITE=""
+  RED=""
+  RESET=""
+fi
+
+# Create a temporary directory for our work that gets cleaned up on exit.
 WORK_DIR=$(mktemp -d)
+trap 'echo -e "${YELLOW}Cleaning up...${RESET}"; rm -rf "$WORK_DIR"' EXIT
 
-# --- Script Functions ---
+# --- Helper Functions ---
 
-# Function to clean up the temporary directory on exit
-cleanup() {
-  echo "Cleaning up temporary directory..."
-  rm -rf "$WORK_DIR"
-}
-
-# Register the cleanup function to be called on script exit
-trap cleanup EXIT
-
-# Function to check if a command exists
+# Checks if a command-line tool is available in the user's PATH.
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to print a formatted message
+# Prints a formatted message to the console.
 log() {
-    echo "--------------------------------------------------"
-    echo "$1"
-    echo "--------------------------------------------------"
+    echo -e "${YELLOW}--------------------------------------------------${RESET}"
+    echo -e "${BOLD}$1${RESET}"
+    echo -e "${YELLOW}--------------------------------------------------${RESET}"
 }
 
 # --- Main Script ---
@@ -48,11 +80,11 @@ log() {
 log "Checking for required tools (helm, grep, awk, sort, uniq)..."
 for cmd in helm grep awk sort uniq; do
     if ! command_exists "$cmd"; then
-        echo "Error: Required command '$cmd' is not installed. Please install it and try again."
+        echo -e "${RED}Error: Required command '$cmd' is not installed. Please install it and try again.${RESET}"
         exit 1
     fi
 done
-echo "All required tools are present."
+echo -e "${SUCCESS_GREEN}All required tools are present.${RESET}"
 
 # 2. Add and Update the New Relic Helm Repo
 log "Adding and updating the New Relic Helm repository..."
@@ -63,38 +95,38 @@ else
     echo "New Relic Helm repo already exists."
 fi
 helm repo update "$REPO_NAME"
-echo "Repo update complete."
+echo -e "${SUCCESS_GREEN}Repo update complete.${RESET}"
 
 # 3. Fetch, Unpack, and Update Dependencies for the Chart
 log "Fetching chart and its dependencies locally..."
 cd "$WORK_DIR"
 
-# Retry helm pull in case of transient network issues
+# Retry helm pull to guard against transient network issues.
 MAX_RETRIES=3
 RETRY_COUNT=0
 until helm pull "$REPO_NAME/$CHART_NAME" --untar > /dev/null 2>&1 || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
   RETRY_COUNT=$((RETRY_COUNT+1))
-  echo "helm pull failed. Retrying in 5 seconds... (Attempt $RETRY_COUNT/$MAX_RETRIES)"
+  echo -e "helm pull failed. ${YELLOW}Retrying in 5 seconds...${RESET} (Attempt $RETRY_COUNT/$MAX_RETRIES)"
   sleep 5
 done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-  echo "Error: helm pull failed after $MAX_RETRIES attempts."
+  echo -e "${RED}Error: helm pull failed after $MAX_RETRIES attempts.${RESET}"
   exit 1
 fi
 
 cd "$CHART_NAME"
 helm dependency update
-echo "Local chart dependencies are up to date."
+echo -e "${SUCCESS_GREEN}Local chart dependencies are up to date.${RESET}"
 cd "$WORK_DIR"
 
 
-# 4. Render the chart templates and extract image names grouped by chart
+# 4. Render the chart templates and extract image names
 log "Templating the '$CHART_NAME' chart to find container images..."
-# We use helm template with --debug to get the source file for each manifest.
-# We redirect stderr to stdout (2>&1) to ensure all output is piped to awk.
-# An awk script then parses this output, stores images in an array grouped by chart,
-# and prints the formatted, indented list at the end.
+# The following pipeline renders the chart with all sub-charts enabled to
+# ensure we find all possible images. The output is then piped to a powerful
+# awk script that parses the template source comments to group images by the
+# sub-chart they originated from.
 images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
     --set global.cluster=temp-cluster-name \
     --set global.licenseKey=dummy-key \
@@ -114,7 +146,7 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
     --set newrelic-k8s-metrics-adapter.personalAPIKey=dummy-api-key \
     --set newrelic-k8s-metrics-adapter.config.accountID=12345678 \
     --debug 2>&1 | \
-    awk '
+    awk -v c_chart="${CYAN}${BOLD}" -v c_version="${WHITE}" -v c_reset="${RESET}" '
       # This awk script collects all images and groups them by their source sub-chart.
       # It then prints a formatted, indented list.
 
@@ -132,18 +164,28 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
       }
 
       # When an "image:" line is found, clean up the image name and add it to our array.
-      # The array key is the chart name, and the value is a growing list of its images.
       /^[ \t]+image:/ {
           gsub(/"|\047/, "", $2) # Remove quotes
-          # Only process if the image name is not empty
-          if ($2 != "") {
-              # If this is the first image for this chart, initialize it. Otherwise, add a newline.
+          image_full = $2
+
+          if (image_full != "") {
+              # Find the position of the last colon to isolate the version tag
+              last_colon_pos = match(image_full, /:[^:]+$/)
+              formatted_image = image_full
+
+              if (last_colon_pos) {
+                  # Reconstruct the string with color codes around the version
+                  base = substr(image_full, 1, RSTART)
+                  tag = substr(image_full, RSTART + 1)
+                  formatted_image = base c_version tag c_reset
+              }
+
               if (images[current_chart] == "") {
-                  images[current_chart] = "\t- " $2
+                  images[current_chart] = "\t- " formatted_image
               } else {
-                  # Avoid adding duplicates
-                  if (index(images[current_chart], $2) == 0) {
-                    images[current_chart] = images[current_chart] "\n\t- " $2
+                  # Avoid adding duplicates by checking against the original, uncolored image name
+                  if (index(images[current_chart], image_full) == 0) {
+                    images[current_chart] = images[current_chart] "\n\t- " formatted_image
                   }
               }
           }
@@ -151,10 +193,9 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
 
       # After processing all lines, print the formatted output.
       END {
-          # Sort the chart names alphabetically for consistent output
           PROCINFO["sorted_in"] = "@ind_str_asc"
           for (chart in images) {
-              print chart ":"
+              print c_chart chart ":" c_reset
               print images[chart]
           }
       }
@@ -162,12 +203,12 @@ images_by_chart=$(helm template "$RELEASE_NAME" ./"$CHART_NAME" \
 
 
 if [ -z "$images_by_chart" ]; then
-    echo "No images found. This could be due to an issue with the Helm chart or the template command."
+    echo -e "${RED}No images found. This could be due to an issue with the Helm chart or the template command.${RESET}"
     exit 1
 fi
 
 # 5. Display the results
 log "Container images found in '$CHART_NAME' and its dependencies:"
-echo "$images_by_chart"
+echo -e "$images_by_chart"
 
-log "Script finished successfully!"
+log "${SUCCESS_GREEN}Script finished successfully!${RESET}"
