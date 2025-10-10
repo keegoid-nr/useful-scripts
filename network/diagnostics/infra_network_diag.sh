@@ -1,32 +1,48 @@
 #!/bin/bash
-# New Relic Infra Network Diagnostics Script
-# This script collects network diagnostics information
-# related to the Infra agent for New Relic support cases.
-#
-# Author : Keegan Mullaney
-# Company: New Relic
-# Email  : kmullaney@newrelic.com
-# Website: github.com/keegoid-nr/useful-scripts
-# License: Apache License 2.0
+: '
+New Relic Infrastructure Network Diagnostics
 
-# Help/Usage function
+This script gathers comprehensive network diagnostics to help troubleshoot
+connectivity issues between a host and New Relic endpoints. It is designed
+to be run on a problematic host and the output bundled for a support case.
+
+It performs the following actions:
+- Checks system compatibility and for required tools (mtr, curl, dig/host).
+- Gathers system DNS configuration (/etc/resolv.conf, etc.).
+- For each New Relic endpoint, it runs:
+    - DNS lookups.
+    - Verbose curl tests to check TLS handshakes.
+    - TCP port checks.
+    - MTR (My Traceroute) reports to inspect the full network path.
+- Performs connectivity tests against the configured DNS servers.
+- Collects local firewall rules and recent system/agent logs.
+- Packages all collected data into a single compressed tarball.
+
+Author : Keegan Mullaney
+Company: New Relic
+Email  : kmullaney@newrelic.com
+Website: github.com/keegoid-nr/useful-scripts
+License: Apache License 2.0
+'
+
+# --- Section 0: Prerequisite Checks ---
+
+# Displays usage information and exits.
 usage() {
     echo "Usage: sudo $0 [-c <count>]"
     echo "  -c <count>: Optional. Number of packets for mtr to send (default: 20)."
     exit 1
 }
 
-
-# --- Section 0: Prerequisite Checks ---
-# Check if script is being run as root
+# This script requires root privileges to run tools like mtr and access certain log files.
 if [[ $EUID -ne 0 ]]; then
     echo "❌ Error: This script must be run as root to access system logs and tools."
     echo "Please run it with sudo: sudo $0"
     exit 1
 fi
 
-# Check for a supported OS version to ensure modern TLS support
-echo "🔎 Verifying operating system compatibility..."
+# Function to exit if the OS is too old to support modern TLS standards (1.2+).
+# The New Relic agent requires a modern TLS version to connect securely.
 unsupported_os_exit() {
     echo "❌ Error: Unsupported Operating System Detected."
     echo "This script requires a modern Linux distribution to ensure tools like curl support current TLS standards (TLS 1.2+)."
@@ -34,11 +50,13 @@ unsupported_os_exit() {
     exit 1
 }
 
+echo "🔎 Verifying operating system compatibility..."
 if [ -f /etc/os-release ]; then
-    # Source the os-release file to get distribution info
+    # Modern systems use /etc/os-release, which is easy to parse.
     . /etc/os-release
     MAJOR_VERSION=$(echo "$VERSION_ID" | cut -d. -f1)
 
+    # Check major versions of common distributions.
     case "$ID" in
         centos|rhel|almalinux|rocky)
             if [ "$MAJOR_VERSION" -lt 7 ]; then unsupported_os_exit; fi
@@ -54,7 +72,7 @@ if [ -f /etc/os-release ]; then
             ;;
     esac
 elif [ -f /etc/redhat-release ]; then
-    # Fallback for very old systems without /etc/os-release (e.g., CentOS 6)
+    # Fallback for older RHEL-based systems without /etc/os-release.
     if grep -q "release 6" /etc/redhat-release; then
         unsupported_os_exit
     fi
@@ -64,7 +82,7 @@ fi
 echo "✅ Operating system is supported."
 
 
-# Check for critical tools. Exit if they are not found.
+# Verify that critical diagnostic tools are installed.
 CRITICAL_TOOLS=("mtr" "curl")
 for tool in "${CRITICAL_TOOLS[@]}"; do
     if ! command -v "$tool" &> /dev/null; then
@@ -75,7 +93,7 @@ for tool in "${CRITICAL_TOOLS[@]}"; do
     fi
 done
 
-# Check for a DNS lookup tool, trying dig -> host -> nslookup.
+# Find a suitable DNS lookup tool, preferring 'dig' for its detailed output.
 DNS_TOOL=""
 if command -v dig &> /dev/null; then
     DNS_TOOL="dig"
@@ -93,14 +111,14 @@ echo "✅ Using '${DNS_TOOL}' for DNS lookups."
 
 # --- Section 1: Configuration & Argument Parsing ---
 
-# Default number of packets for mtr to send
+# Default number of packets for MTR to send in each trace.
 MTR_PACKET_COUNT=20
 
-# Parse command-line options using getopts
+# Parse command-line flags (e.g., -c for packet count).
 while getopts ":c:h" opt; do
   case ${opt} in
     c )
-      # Validate that the argument for -c is a positive integer
+      # Validate that the argument for -c is a positive integer.
       if [[ "${OPTARG}" =~ ^[1-9][0-9]*$ ]]; then
         MTR_PACKET_COUNT=${OPTARG}
       else
@@ -121,9 +139,10 @@ while getopts ":c:h" opt; do
       ;;
   esac
 done
-shift $((OPTIND -1)) # Remove parsed options from the positional parameters
+# Remove the parsed options from the script's arguments.
+shift $((OPTIND -1))
 
-# New Relic endpoints to test
+# A list of critical New Relic ingestion endpoints for the Infrastructure agent.
 ENDPOINTS=(
   "metric-api.newrelic.com"
   "infra-api.newrelic.com"
@@ -133,7 +152,7 @@ ENDPOINTS=(
 
 
 # --- Script Start ---
-# Create a unique directory for the output files
+# Create a unique, timestamped directory to store all output files.
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 OUTPUT_DIR="infra_network_diag_${TIMESTAMP}"
 mkdir -p "${OUTPUT_DIR}"
@@ -143,15 +162,20 @@ echo "------------------------------------------------------------"
 
 
 # --- Section 2: System and DNS Info ---
+# Collect core system files that define DNS resolution behavior.
 echo "🔎 Collecting DNS and system info..."
 cp /etc/resolv.conf "${OUTPUT_DIR}/resolv.conf.txt"
 cp /etc/nsswitch.conf "${OUTPUT_DIR}/nsswitch.conf.txt"
+
+# Extract DNS server IPs from resolv.conf to use for targeted tests later.
 DNS_SERVERS=($(grep '^nameserver' /etc/resolv.conf | awk '{print $2}'))
 if [ ${#DNS_SERVERS[@]} -eq 0 ]; then
   echo "⚠️  Could not find any DNS nameservers in /etc/resolv.conf"
 else
   echo "Found DNS Servers: ${DNS_SERVERS[*]}"
 fi
+
+# If systemd-resolved is in use, get its status for more detailed DNS info.
 if command -v systemd-resolve &> /dev/null; then
   systemd-resolve --status > "${OUTPUT_DIR}/systemd-resolve_status.txt"
 fi
@@ -163,7 +187,9 @@ echo "🔎 Running network tests for New Relic endpoints..."
 for endpoint in "${ENDPOINTS[@]}"; do
   echo "--- Testing ${endpoint} ---"
 
-  # DNS Lookup (using selected tool) and Curl
+  # Perform a standard DNS lookup and a verbose curl test.
+  # The curl to /cdn-cgi/trace is a Cloudflare endpoint that returns useful connection data.
+  # The -v flag shows the TLS handshake, which is critical for debugging connection errors.
   echo "[*] Running DNS lookup and curl for ${endpoint}"
   dns_lookup_file="${OUTPUT_DIR}/dns_lookup_${endpoint}.txt"
   case "${DNS_TOOL}" in
@@ -173,7 +199,10 @@ for endpoint in "${ENDPOINTS[@]}"; do
   esac
   curl -v "https://${endpoint}/cdn-cgi/trace" &> "${OUTPUT_DIR}/curl_${endpoint}.txt"
 
-  # Port check: Try nc -vz first, fallback to bash /dev/tcp
+  # Check raw TCP connectivity to port 443.
+  # First, try 'nc' which is a standard network utility.
+  # If 'nc' is unavailable or fails, fall back to bash's built-in /dev/tcp device
+  # for a more reliable check that doesn't depend on external tools.
   echo "[*] Checking port connectivity to ${endpoint}:443"
   port_check_file="${OUTPUT_DIR}/port_check_${endpoint}_443.txt"
   if command -v nc &>/dev/null && timeout 5 nc -vz "${endpoint}" 443 &> "${port_check_file}"; then
@@ -184,11 +213,16 @@ for endpoint in "${ENDPOINTS[@]}"; do
     if [ $? -eq 0 ]; then echo "Port check method: bash. Result: Success" >> "${port_check_file}"; else echo "Port check method: bash. Result: Failure" >> "${port_check_file}"; fi
   fi
 
-  # mtr
+  # Run an MTR trace to inspect the network path for packet loss or latency.
+  # -b: Show both IP addresses and hostnames.
+  # -z: Show ASN (Autonomous System Number) information.
+  # -w: Use wide report format for full hostnames.
+  # -T: Use TCP mode, which is more likely to pass through firewalls than ICMP.
   echo "[*] Running mtr for ${endpoint}. This may take a minute..."
   mtr -bzwT -c ${MTR_PACKET_COUNT} "${endpoint}" > "${OUTPUT_DIR}/mtr_${endpoint}.txt"
 
-  # Targeted DNS lookup
+  # Run targeted DNS lookups against each specific server from resolv.conf.
+  # This helps diagnose issues with a single faulty DNS resolver.
   if [ ${#DNS_SERVERS[@]} -gt 0 ]; then
     echo "[*] Running targeted '${DNS_TOOL}' against each DNS server for ${endpoint}"
     for server in "${DNS_SERVERS[@]}"; do
@@ -206,8 +240,10 @@ echo "------------------------------------------------------------"
 
 
 # --- Section 4: Network Tests for Local DNS Resolvers ---
+# Test connectivity to the DNS servers themselves to rule out upstream DNS issues.
 echo "🔎 Running network tests for local DNS resolvers..."
 for server in "${DNS_SERVERS[@]}"; do
+    # Check UDP port 53, the standard port for DNS queries.
     echo "[*] Testing connectivity to DNS resolver ${server}:53"
     dns_port_check_file="${OUTPUT_DIR}/port_check_dns_${server}_53.txt"
     if command -v nc &>/dev/null && timeout 5 nc -vzu "${server}" 53 &> "${dns_port_check_file}"; then
@@ -218,6 +254,7 @@ for server in "${DNS_SERVERS[@]}"; do
       if [ $? -eq 0 ]; then echo "Port check method: bash. Result: Success" >> "${dns_port_check_file}"; else echo "Port check method: bash. Result: Failure" >> "${dns_port_check_file}"; fi
     fi
 
+    # Run MTR to the DNS server to check the path for packet loss or latency.
     echo "[*] Running mtr to DNS resolver ${server}. This may take a minute..."
     mtr -bzwT -c ${MTR_PACKET_COUNT} "${server}" > "${OUTPUT_DIR}/mtr_dns_${server}.txt"
 done
@@ -225,13 +262,17 @@ echo "------------------------------------------------------------"
 
 
 # --- Section 5: Collect Firewall Details and Logs ---
+# Gather local firewall rules, as these are a common cause of blocked connections.
 echo "🔎 Collecting firewall rules and logs..."
 if command -v iptables &> /dev/null; then iptables -L -v -n > "${OUTPUT_DIR}/iptables_rules.txt"; fi
 if command -v firewall-cmd &> /dev/null; then firewall-cmd --list-all > "${OUTPUT_DIR}/firewalld_rules.txt"; fi
 echo "Note: If using a cloud provider, please also export security group/network ACL rules."
 
+# Collect New Relic agent data and logs, which may contain relevant error messages.
 if [ -d "/var/db/newrelic-infra/newrelic-agent" ]; then cp -r /var/db/newrelic-infra/newrelic-agent "${OUTPUT_DIR}/"; fi
 if [ -d "/var/db/newrelic-infra/logs" ]; then cp -r /var/db/newrelic-infra/logs "${OUTPUT_DIR}/"; fi
+
+# Collect recent system-level logs, which can provide context on network or system-wide issues.
 journalctl --since "1 hour ago" > "${OUTPUT_DIR}/journalctl_last_hour.txt"
 if [ -f "/var/log/messages" ]; then tail -n 5000 /var/log/messages > "${OUTPUT_DIR}/messages_last5000.txt"; fi
 if [ -f "/var/log/syslog" ]; then tail -n 5000 /var/log/syslog > "${OUTPUT_DIR}/syslog_last5000.txt"; fi
@@ -241,7 +282,9 @@ echo "------------------------------------------------------------"
 # --- Section 6: Final Step ---
 echo "📦 Compressing all output files..."
 tar -czvf "${OUTPUT_DIR}.tar.gz" "${OUTPUT_DIR}"
-# Ensure the final archive is accessible by the user who ran sudo
+
+# When run with sudo, files are created as root. This changes ownership
+# back to the original user, making the final archive easily accessible.
 if [ -n "$SUDO_USER" ]; then
     chown -R "${SUDO_USER}:${SUDO_GID}" "${OUTPUT_DIR}" "${OUTPUT_DIR}.tar.gz" &> /dev/null
 fi
