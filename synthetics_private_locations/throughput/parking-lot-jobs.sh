@@ -88,102 +88,90 @@ echo "   - Analyzing in $NUM_INTERVALS intervals of $interval_length seconds eac
 echo
 
 ## --- Step 2 & 3: Process the log and generate reports ---
-gawk -v start="$start_epoch" -v interval="$interval_length" -v num_intervals="$NUM_INTERVALS" -v verbose="$VERBOSE_MODE" -v total_dur="$total_duration" '
-# A function to format epoch seconds into a human-readable string.
-function format_time(epoch) { return strftime("%Y-%m-%d %H:%M:%S", epoch) }
 
-# BEGIN block: Executes once before processing any lines.
+# The gawk script below is the core of the analyzer. Here's a summary of its logic:
+#
+# 1. TIMESTAMP PARSING:
+#    - It handles two timestamp formats: "YYYY-MM-DD HH:MM:SS,..." and Nginx-style "[DD/Mon/YYYY:...]".
+#    - Each log line's timestamp is converted to an epoch second to determine which time interval ("bucket") it belongs to.
+#
+# 2. LIFECYCLE EVENT COUNTING:
+#    - It scans each line for specific phrases to count key events per time bucket.
+#    - "is being staged": Differentiates between heavyweight (SCRIPT_BROWSER, etc.) and lightweight (SIMPLE) jobs.
+#    - "Putting job ... into the parking lot": Counts heavyweight jobs entering the queue.
+#    - "(SIMPLE) to Processor": Counts lightweight jobs submitted.
+#    - "/submit/job" with HTTP 202: Counts all jobs accepted via the API.
+#    - Runtime GET requests (e.g., /script_api): Counts successful job retrievals (HTTP 200) and empty polls (HTTP 204).
+#
+# 3. REPORTING (in the END block):
+#    - It iterates through each time bucket to print a formatted summary.
+#    - It calculates throughput in jobs/minute.
+#    - It derives the "heavyweight submitted" count by subtracting lightweight jobs from the total API submissions.
+#    - Finally, it prints an overall summary, including the key "Discrepancy" metric, which is the difference
+#      between jobs put into the lot and jobs retrieved.
+#
+gawk -v start="$start_epoch" -v interval="$interval_length" -v num_intervals="$NUM_INTERVALS" -v verbose="$VERBOSE_MODE" -v total_dur="$total_duration" '
+function format_time(epoch) { return strftime("%Y-%m-%d %H:%M:%S", epoch) }
 BEGIN {
-    # Create a mapping from three-letter month abbreviations to numeric months (e.g., "Jan" -> "01").
-    # This is necessary for the mktime() function to parse one of the timestamp formats.
     months_str = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec"; split(months_str, months_arr, " ")
     for (i in months_arr) { month_map[months_arr[i]] = sprintf("%02d", i) }
 }
-
-# Main block: Executes for each line in the log file.
 {
     current_epoch = 0
-    # --- Unified Timestamp Parser ---
-    # Attempt to parse one of two known timestamp formats to get the current line's epoch time.
-
-    # Format 1: "YYYY-MM-DD HH:MM:SS,ms{...}"
     if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2},/) {
         year = substr($1, 1, 4); month = substr($1, 6, 2); day = substr($1, 9, 2)
         hour = substr($2, 1, 2); min = substr($2, 4, 2); sec = substr($2, 7, 2)
         current_epoch = mktime(year " " month " " day " " hour " " min " " sec)
-    }
-    # Format 2: Nginx-style "[DD/Mon/YYYY:HH:MM:SS ...]"
-    else if ($4 ~ /\[[0-9]{2}\/[A-Z][a-z]{2}\/[0-9]{4}:/) {
+    } else if ($4 ~ /\[[0-9]{2}\/[A-Z][a-z]{2}\/[0-9]{4}:/) {
         ts_str = $4; gsub(/\[/, "", ts_str)
         year = substr(ts_str, 8, 4); month_abbr = substr(ts_str, 4, 3); month_num = month_map[month_abbr]
         day = substr(ts_str, 1, 2); hour = substr(ts_str, 13, 2); min = substr(ts_str, 16, 2); sec = substr(ts_str, 19, 2)
         current_epoch = mktime(year " " month_num " " day " " hour " " min " " sec)
     }
 
-    # If a valid timestamp was found, process the log line.
     if (current_epoch > 0) {
-        # Determine which time interval (bucket) this log line falls into.
         bucket = int((current_epoch - start) / interval)
-        if (bucket >= num_intervals) { bucket = num_intervals - 1 } # Put overflow into the last bucket.
+        if (bucket >= num_intervals) { bucket = num_intervals - 1 }
 
-        # --- Lifecycle Event Parsing ---
-        # Match log patterns to count different job lifecycle events.
-
-        # A job is staged for execution.
         if ($0 ~ /is being staged for execution/) {
-            # Differentiate between heavyweight and lightweight jobs being staged.
             if ($0 ~ /Type: \[(SCRIPT_BROWSER|SCRIPT_API|BROWSER)\]/) {
                 staged_heavyweight_count[bucket]++;
             } else if ($0 ~ /Type: \[SIMPLE\]/) {
                 staged_lightweight_count[bucket]++;
             }
-            next # Skip to the next line after a match.
+            next
         }
-        # A heavyweight job is being queued in the parking lot.
         if ($0 ~ /Putting job .* into the parking lot/) {
             put_into_lot_count[bucket]++; next
         }
-        # A lightweight (SIMPLE) job is submitted directly to the processor.
         if ($0 ~ /\(SIMPLE\) to Processor/) {
             simple_job_count[bucket]++; next
         }
-        # An API call submitted a job and received a 202 Accepted.
-        # This counts BOTH heavyweight and lightweight jobs submitted via the API.
         if ($7 ~ /submit\/job/ && $9 == 202) {
-            # The last field ($NF) contains the count of jobs submitted in this request.
             post_202_count[bucket] += $NF; next
         }
 
-        # --- Job Retrieval Parsing ---
-        # A runtime is polling the parking lot for a heavyweight job.
-        runtime = $7; sub(/.*\//, "", runtime) # Extract runtime name from the URL path.
+        runtime = $7; sub(/.*\//, "", runtime)
         if (runtime == "script_api" || runtime == "script_browser") {
             http_code = $9
-            if (http_code == 200) { # A job was successfully retrieved.
+            if (http_code == 200) {
                 retrieved_ok_count[bucket]++
-            } else if (http_code == 204) { # The parking lot was polled but was empty.
+            } else if (http_code == 204) {
                 retrieved_empty_count[bucket]++
             }
         }
     }
 }
-# END block: Executes once after all lines have been processed to summarize results.
 END {
-    # Initialize grand totals for the final summary.
     grand_total_staged_hw = 0; grand_total_staged_lw = 0; grand_total_put_in_lot = 0
     grand_total_retrieved_ok = 0; grand_total_retrieved_empty = 0
     grand_total_simple = 0; grand_total_post_202 = 0
 
-    # --- Interval Reporting ---
-    # Loop through each time bucket and print a detailed report.
     for (b = 0; b < num_intervals; b++) {
-        # Calculate start and end times for the current interval.
         interval_start = start + (b * interval); interval_end = interval_start + interval - 1
-        # Ensure the last interval ends exactly at the last timestamp.
         if (b == num_intervals - 1) { interval_end = start + total_dur }
         print "--- 📊 Time Interval " (b+1) " of " num_intervals " (" format_time(interval_start) " to " format_time(interval_end) ") ---"
 
-        # Safely access array counts, defaulting to 0 if no events occurred in this bucket.
         staged_hw = staged_heavyweight_count[b] + 0; grand_total_staged_hw += staged_hw
         staged_lw = staged_lightweight_count[b] + 0; grand_total_staged_lw += staged_lw
         put_in_lot = put_into_lot_count[b] + 0; grand_total_put_in_lot += put_in_lot
@@ -192,10 +180,7 @@ END {
         simple_jobs = simple_job_count[b] + 0; grand_total_simple += simple_jobs
         post_202_jobs = post_202_count[b] + 0; grand_total_post_202 += post_202_jobs
 
-        # Calculate the number of heavyweight jobs submitted.
-        # This is derived by taking the total jobs submitted (202s) and subtracting the lightweight ones.
         heavyweight_submitted = post_202_jobs - simple_jobs
-        # Calculate the throughput rate for this interval in jobs per minute.
         throughput_rate = 0
         if (interval > 0) { throughput_rate = (retrieved_ok / interval) * 60 }
 
@@ -212,12 +197,10 @@ END {
         print "----------------------------------------------------------------------"
     }
 
-    # --- Final Summary ---
     print "\n======================================================================"
     print "✅ OVERALL SUMMARY"
     print "======================================================================"
 
-    # Calculate overall average throughput across the entire log duration.
     overall_throughput_rate = 0
     if (total_dur > 0) { overall_throughput_rate = (grand_total_retrieved_ok / total_dur) * 60 }
 
@@ -235,8 +218,6 @@ END {
 
     print "\n--- Parking Lot Analysis ---"
     print "   - Total Empty Retrievals:            " grand_total_retrieved_empty
-    # The discrepancy is a key health indicator: it shows how many jobs entered the lot but were not retrieved.
-    # A large positive number could indicate jobs are getting stuck.
     discrepancy = grand_total_put_in_lot - grand_total_retrieved_ok
     print "   - Discrepancy (Put in Lot vs. Retrieved): " discrepancy
     print "======================================================================"
