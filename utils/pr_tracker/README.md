@@ -2,13 +2,13 @@
 
 ![Language](https://img.shields.io/badge/language-Python-3776AB.svg)
 
-A Python script to track merged pull requests for a specific group of authors in a public GitHub repository. It provides key metrics to help measure contributions and documentation improvements over time.
+A Python script to track the status (open, merged, unmerged) and size (lines changed) of pull requests for a specific group of authors in a public GitHub repository. It provides key metrics to help measure contribution activity over time.
 
 ## Features
 
-* **Custom Timeframe**: Track merged PRs within a user-defined timeframe (e.g., the last 6 months).
+* **Custom Timeframe**: Track open and closed PRs within a user-defined timeframe (e.g., the last 6 months).
 * **Targeted Author List**: Filter contributions by a specific list of authors managed in a simple plain text file (`authors.txt`).
-* **Key Metrics**: Display total contributions, unique contributors, PRs per author, and PRs per month.
+* **Key Metrics**: Display counts of merged, unmerged, and open PRs per author, including total lines changed.
 * **Robust API Handling**: Gracefully handles GitHub API limitations like rate limits and search result caps.
 
 ## Setup
@@ -64,28 +64,30 @@ A Python script to track merged pull requests for a specific group of authors in
 
 2. When prompted, enter the number of months you wish to search back and press Enter.
 
-    ```bash
+    ```txt
     Enter the number of months to search: 12
     ```
 
 ### Example Output
 
-```bash
+```txt
 $ python pr_tracker.py
 Enter the number of months to search: 6
 
-Processing Months: 100%|██████████████████| 7/7 [00:15<00:00,  2.15s/it]
+Fetching Closed PRs: 100%|██████████████████| 7/7 [00:15<00:00,  2.15s/it]
+Fetching Open PRs  : 100%|██████████████████| 7/7 [00:15<00:00,  2.15s/it]
+Analyzing PR Details: 100%|█████████████████| 125/125 [01:02<00:00, 2.01it/s]
 
 --- PR Analysis ---
-Showing results since 2025-04-10
+Showing results for PRs created or closed since 2025-04-10
 Target Authors: github-username-1, github-username-2, another-user
 Total Merged PRs by target authors: 105
 Unique Contributors: 3
 
 --- PRs per Author ---
-github-username-2: 58
-github-username-1: 32
-another-user: 15
+github-username-2: 58 merged, 5 unmerged, 3 open (14551 total lines: +10250, -4301)
+another-user: 15 merged, 1 unmerged, 1 open (5798 total lines: +4500, -1298)
+github-username-1: 32 merged, 12 unmerged, 0 open (1112 total lines: +812, -300)
 
 --- Merged PRs per Month ---
 2025-05: 18
