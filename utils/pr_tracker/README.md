@@ -7,7 +7,7 @@ A Python script to track merged pull requests for a specific group of authors in
 ## Features
 
 * **Custom Timeframe**: Track merged PRs within a user-defined timeframe (e.g., the last 6 months).
-* **Targeted Author List**: Filter contributions by a specific list of authors managed in a simple `authors.csv` file.
+* **Targeted Author List**: Filter contributions by a specific list of authors managed in a simple plain text file (`authors.txt`).
 * **Key Metrics**: Display total contributions, unique contributors, PRs per author, and PRs per month.
 * **Robust API Handling**: Gracefully handles GitHub API limitations like rate limits and search result caps.
 
@@ -43,10 +43,9 @@ A Python script to track merged pull requests for a specific group of authors in
     **Note on SSO**: Some organizations, including New Relic, require you to authorize your Personal Access Token for use with SSO. After creating your token, you may need to click "Configure SSO" or "Authorize" next to its name on the [tokens page](https://github.com/settings/tokens) to grant it access.
 
 2. **Define Authors**
-    Create a file named `authors.csv` in the project directory. It must contain a single column header named `username`. Add the GitHub usernames of the engineers you want to track, one per line:
+    Create a plain text file named `authors.txt` in the project directory. Add the GitHub usernames you want to track, with one username per line:
 
-    ```csv
-    username
+    ```text
     github-username-1
     github-username-2
     another-user
@@ -66,7 +65,7 @@ A Python script to track merged pull requests for a specific group of authors in
 2. When prompted, enter the number of months you wish to search back and press Enter.
 
     ```bash
-    Enter the number of months to search: 6
+    Enter the number of months to search: 12
     ```
 
 ### Example Output
@@ -78,7 +77,7 @@ Enter the number of months to search: 6
 Processing Months: 100%|██████████████████| 7/7 [00:15<00:00,  2.15s/it]
 
 --- PR Analysis ---
-Showing results since 2025-04-09
+Showing results since 2025-04-10
 Target Authors: github-username-1, github-username-2, another-user
 Total Merged PRs by target authors: 105
 Unique Contributors: 3
@@ -96,3 +95,7 @@ another-user: 15
 2025-09: 16
 2025-10: 5
 ```
+
+## License
+
+This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
