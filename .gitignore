@@ -90,3 +90,4 @@ $RECYCLE.BIN/
 .local/
 **/*.log
 **/*.json
+**/*.env
