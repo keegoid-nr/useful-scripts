@@ -1,5 +1,7 @@
 # New Relic Synthetics Monitor Manager
 
+![Language](https://img.shields.io/badge/language-Python-3776AB.svg)
+
 A command-line Python script for creating, enabling, disabling, deleting, and checking the results of New Relic Synthetics monitors in bulk using the NerdGraph API.
 
 This script is designed to simplify the management of synthetic monitors by tagging them and allowing for bulk actions based on type and status.
