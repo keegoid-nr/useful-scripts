@@ -1,4 +1,4 @@
-# GitHub PR Contributor Tracker
+# GitHub PR Tracker
 
 ![Language](https://img.shields.io/badge/language-Python-3776AB.svg)
 
