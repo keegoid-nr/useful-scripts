@@ -1,92 +1,97 @@
-# New Relic Bundle Chart Image Inspector
+# Helm Chart Image Inspector
 
 ![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg)
 
-This script fetches the latest `nri-bundle` Helm chart and inspects it to discover all container images and their versions used across its various sub-charts. It renders the chart templates locally, without needing a live Kubernetes cluster, and parses the output to group images by the sub-chart they belong to.
+A versatile command-line tool to inspect any Helm chart—local or remote—and discover all container images used across the chart and its dependencies.
 
-This is useful for quickly verifying image versions before a deployment or for security scanning purposes.
-
------
+This is useful for quickly verifying image versions before a deployment, for security scanning, or for simply understanding what's inside a complex chart.
 
 ## Features
 
-- **No Cluster Required**: Inspects chart images without deploying to a Kubernetes cluster.
-- **Automatic Updates**: Always fetches the latest version of the `nri-bundle` chart from the New Relic Helm repository.
-- **Dependency Aware**: Resolves and includes images from all sub-charts (e.g., `kube-state-metrics`, `nri-prometheus`, etc.).
-- **Readability**: Provides clear, color-coded output that groups images by their parent chart and highlights version tags for easy scanning.
-
------
+* **Universal**: Inspects any Helm chart from any repository.
+* **Local & Remote Modes**: Can inspect a chart from a remote repository or a release already deployed to your Kubernetes cluster.
+* **New Relic Aware**: An interactive mode (`--newrelic`) provides a curated list of New Relic charts and automatically applies the necessary presets for a seamless inspection.
+* **Dependency Aware**: Resolves and includes images from all sub-charts.
+* **External Configuration**: Chart presets are managed in an external `chart-presets.txt` file, making them easy to update without modifying the script.
+* **Readability**: Provides clear, color-coded output that groups images by their parent chart and highlights version tags for easy scanning.
 
 ## Prerequisites
 
 Before running the script, ensure you have the following command-line tools installed:
 
-- `helm`
-- `grep`
-- `awk`
-- `sort`
-- `uniq`
-
------
+* `helm`
+* `kubectl` (for local mode)
+* `jq`
+* `grep`
+* `awk`
+* `sort`
+* `uniq`
 
 ## Usage
 
 1. **Make the script executable:**
 
-    ```sh
-    chmod +x nri-bundle_latest_images.sh
-    ```
+   ```sh
+   chmod +x helm-image-inspector.sh
+   ```
 
-2. **Run the script:**
+2. **Run the script in one of the three modes:**
 
-    ```sh
-    ./nri-bundle_latest_images.sh
-    ```
+   **A) New Relic Interactive Mode (Recommended for New Relic charts):**
 
-    The script will handle creating a temporary directory, fetching the chart, processing the templates, and printing the final formatted list to your console.
+   This mode will prompt you to select a chart from the New Relic repository and automatically apply the necessary configurations.
 
------
+   ```sh
+   ./helm-image-inspector.sh --newrelic
+   ```
 
-## Example Output
+   **B) Repo Mode (For any chart in a repository):**
 
-The output will be a list of charts and their associated container images, with versions highlighted in white.
+   Specify the repository and chart name. You can also provide an optional version and pass-through any standard Helm flags, like `--set`.
+
+   ```sh
+   # Inspect the latest version
+   ./helm-image-inspector.sh newrelic/synthetics-job-manager --set synthetics.privateLocationKey=dummy-key
+
+   # Inspect a specific version
+   ./helm-image-inspector.sh jetstack/cert-manager v1.10.0
+   ```
+
+   **C) Local Mode (For a deployed release):**
+
+   This mode will scan your current Kubernetes context for deployed Helm releases and prompt you to select one to inspect.
+
+   ```sh
+   ./helm-image-inspector.sh --local
+   ```
+
+## Managing Presets
+
+The script uses a `chart-presets.txt` file to manage the required `--set` flags for complex charts in the `--newrelic` mode. This file must be in the same directory as the script.
+
+You can easily add or modify presets by editing this file. The format is simple:
 
 ```txt
---------------------------------------------------
-Container images found in 'nri-bundle' and its dependencies:
---------------------------------------------------
-kube-state-metrics:
- - registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.1
-newrelic-infra-operator:
- - newrelic/newrelic-infra-operator:1.10.0
-newrelic-infrastructure:
- - newrelic/k8s-nri-cron:1.4.1
- - newrelic/infrastructure:1.50.1
-newrelic-logging:
- - newrelic/fluent-bit-output-plugin:1.14.0
-nri-kube-events:
- - newrelic/nri-kube-events:2.9.0
-nri-prometheus:
- - newrelic/nri-prometheus:2.11.0
-...
+<repo>/<chart-name>: --set key1=value1 --set key2=value2
 ```
 
-*Note: Versions shown are for example purposes and may not be the latest.*
-
------
+**Example:**
+`newrelic/nri-bundle: --set global.cluster=dummy --set global.licenseKey=dummy`
 
 ## How It Works
 
 The script automates the following workflow:
 
-1. **Setup**: It creates a temporary directory for all operations, which is automatically cleaned up when the script exits.
-2. **Helm Repo**: It adds and updates the official New Relic Helm chart repository.
-3. **Fetch**: It uses `helm pull --untar` to download and unpack the latest `nri-bundle` chart locally.
-4. **Template**: It runs `helm template --debug` with all major sub-charts enabled. The `--debug` flag is key, as it adds `# Source:` comments to the output, which allows us to trace each Kubernetes manifest back to its parent sub-chart.
-5. **Parse**: The entire template output is piped to a powerful `awk` script. This script reads the stream line by line, tracks the current chart using the `# Source:` comments, and uses regular expressions to find and extract image names. It then formats, colorizes, and prints the final list.
-
------
+1. **Mode Detection**: It first determines whether to run in `repo`, `local`, or `newrelic` mode based on the arguments provided.
+2. **Setup**: It creates a temporary directory for all operations, which is automatically cleaned up when the script exits.
+3. **Fetch & Template (Repo Mode)**:
+   * It uses `helm search` to find the latest version, then `helm pull` to download the chart.
+   * It runs `helm dependency update` to fetch any sub-charts.
+   * It runs `helm template --debug`, which adds `# Source:` comments that trace each manifest back to its parent chart.
+4. **Get Manifest (Local Mode)**: It runs `helm get manifest` to retrieve the rendered Kubernetes YAML from a deployed release.
+5. **Parse**: The output from either mode is piped to a powerful `awk` script. This script reads the stream, tracks the current chart using the source comments or Helm labels, and extracts all the image names. It also enriches the output with version information from the chart's `Chart.lock` file (in repo mode) or from the `helm.sh/chart` label (in local mode).
+6. **Display**: The final, formatted list is printed to the console.
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.

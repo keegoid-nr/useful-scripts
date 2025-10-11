@@ -1,0 +1,16 @@
+newrelic/nri-bundle: --set global.cluster=dummy-cluster --set global.licenseKey=dummy-key --set newrelic-pixie.apiKey=dummy-key --set newrelic-pixie.enabled=true --set pixie-chart.deployKey=dummy-key --set pixie-chart.enabled=true --set newrelic-infrastructure.enabled=true --set nri-prometheus.enabled=true --set nri-metadata-injection.enabled=true --set kube-state-metrics.enabled=true --set nri-kube-events.enabled=true --set newrelic-logging.enabled=true --set k8s-agents-operator.enabled=true --set newrelic-infra-operator.enabled=true --set newrelic-k8s-metrics-adapter.enabled=true --set newrelic-k8s-metrics-adapter.personalAPIKey=dummy-key --set newrelic-k8s-metrics-adapter.config.accountID=123456 --set newrelic-prometheus-agent.enabled=true --set newrelic-eapm-agent.enabled=true --set newrelic-eapm-agent.config.license_key=dummy-key --set newrelic-eapm-agent.config.cluster_name=dummy-cluster
+newrelic/synthetics-job-manager: --set synthetics.privateLocationKey=dummy-key
+newrelic/synthetics-minion: --set synthetics.privateLocationKey=dummy-key
+newrelic/newrelic-infrastructure: --set global.cluster=dummy-cluster --set global.licenseKey=dummy-key
+newrelic/newrelic-logging: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/newrelic-infra-operator: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/newrelic-k8s-metrics-adapter: --set personalAPIKey=dummy-key --set config.accountID=123456 --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/newrelic-pixie: --set global.cluster=dummy-cluster --set global.licenseKey=dummy-key --set apiKey=dummy-key
+newrelic/nr-ebpf-agent: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/nr-k8s-otel-collector: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/nri-kube-events: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/nri-metadata-injection: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/nri-prometheus: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/nri-statsd: --set global.insightsKey=dummy-key --set global.cluster=dummy-cluster --set accountId=123456
+newrelic/pipeline-control-gateway: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic/agent-control-deployment: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
