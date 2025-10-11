@@ -1,26 +1,29 @@
 #!/bin/bash
-# A simple bash script to decode common HTML entities.
-# It can read from a file, standard input, or the system clipboard.
-# If input is from the clipboard, the decoded text is copied back.
-#
-# Author : Keegan Mullaney
-# Company: New Relic
-# Email  : kmullaney@newrelic.com
-# Website: github.com/keegoid-nr/useful-scripts
-# License: Apache License 2.0
-#
-# Usage:
-#   ./decode_html.sh [filename]
-#   ./decode_html.sh --clipboard
-#   cat [filename] | ./decode_html.sh
+# shellcheck disable=SC2016
+: '
+A simple bash script to decode common HTML entities.
+It can read from a file, standard input, or the system clipboard.
+If input is from the clipboard, the decoded text is copied back.
+
+Author : Keegan Mullaney
+Company: New Relic
+Email  : kmullaney@newrelic.com
+Website: github.com/keegoid-nr/useful-scripts
+License: Apache License 2.0
+
+Usage:
+  ./decode-html.sh [filename]
+  ./decode-html.sh --clipboard
+  cat [filename] | ./decode-html.sh
 
 
-# Function to display usage and exit
+Function to display usage and exit
 usage() {
-    echo "Usage: $0 [filename | --clipboard | -c]" >&2
-    echo "Or pipe content to it: cat <filename> | $0" >&2
-    exit 1
+  echo "Usage: $0 [filename | --clipboard | -c]" >&2
+  echo "Or pipe content to it: cat <filename> | $0" >&2
+  exit 1
 }
+'
 
 INPUT_STREAM=""
 CLIPBOARD_MODE=false # Flag to track if we're using the clipboard

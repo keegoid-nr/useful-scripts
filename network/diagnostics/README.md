@@ -8,8 +8,8 @@ These scripts are intended to be run on the host where the Infrastructure agent 
 
 ## Scripts
 
-- **`infra_network_diag.sh`**: A Bash script for Linux and macOS systems.
-- **`infra_network_diag.ps1`**: A PowerShell script for Windows systems.
+- **`infra-network-diag.sh`**: A Bash script for Linux and macOS systems.
+- **`infra-network-diag.ps1`**: A PowerShell script for Windows systems.
 
 ## Features
 
@@ -26,36 +26,36 @@ These scripts are intended to be run on the host where the Infrastructure agent 
 
 ### Linux / macOS
 
-1. **Download** the `infra_network_diag.sh` script to the affected host.
+1. **Download** the `infra-network-diag.sh` script to the affected host.
 2. **Make it executable**:
 
-    ```bash
-    chmod +x infra_network_diag.sh
+    ```sh
+    chmod +x infra-network-diag.sh
     ```
 
 3. **Run the script with `sudo`**:
 
-    ```bash
-    sudo ./infra_network_diag.sh
+    ```sh
+    sudo ./infra-network-diag.sh
     ```
 
 #### Optional Arguments
 
 - `-c <count>`: Sets the number of packets `mtr` sends to each New Relic endpoint. The default is `20`.
 
-    ```bash
-    sudo ./infra_network_diag.sh -c 50
+    ```sh
+    sudo ./infra-network-diag.sh -c 50
     ```
 
 ### Windows
 
-1. **Download** the `infra_network_diag.ps1` script to the affected host.
+1. **Download** the `infra-network-diag.ps1` script to the affected host.
 2. **Open PowerShell as an Administrator**.
 3. **Navigate to the directory** where you downloaded the script.
 4. **Run the script**:
 
     ```powershell
-    .\infra_network_diag.ps1
+    .\infra-network-diag.ps1
     ```
 
 #### Optional Arguments
@@ -63,15 +63,15 @@ These scripts are intended to be run on the host where the Infrastructure agent 
 - `-PathpingCount <count>`: Sets the number of pings `pathping` sends to each New Relic endpoint. The default is `20`.
 
     ```powershell
-    .\infra_network_diag.ps1 -PathpingCount 50
+    .\infra-network-diag.ps1 -PathpingCount 50
     ```
 
 ## Output
 
-The script will create a directory named `infra_network_diag_<timestamp>` containing all the diagnostic files. It will then create a compressed archive of this directory (`.tar.gz` or `.zip`).
+The script will create a directory named `infra-network-diag_<timestamp>` containing all the diagnostic files. It will then create a compressed archive of this directory (`.tar.gz` or `.zip`).
 
 Please attach this compressed archive to your New Relic support case.
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.

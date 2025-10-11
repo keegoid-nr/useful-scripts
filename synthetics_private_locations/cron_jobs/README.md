@@ -6,8 +6,8 @@ The cron jobs scripts help to ensure the SJM container runs reliability and gets
 
 ## Scripts
 
-- **`sjm_cron_job.sh`**: For environments using Docker.
-- **`sjm_cron_job_podman.sh`**: For environments using Podman.
+- **`sjm-cron-job.sh`**: For environments using Docker.
+- **`sjm-cron-job_podman.sh`**: For environments using Podman.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ The cron jobs scripts help to ensure the SJM container runs reliability and gets
 
     You must set the `PRIVATE_LOCATION_KEY` environment variable on the host. This is typically done in your shell's profile file (e.g., `~/.bash_profile`, `~/.zshrc`, etc.) or in the crontab itself.
 
-    ```bash
+    ```sh
     export PRIVATE_LOCATION_KEY=YOUR_PRIVATE_LOCATION_KEY
     ```
 
@@ -29,7 +29,7 @@ The cron jobs scripts help to ensure the SJM container runs reliability and gets
    Add the appropriate script to your crontab to run at a regular interval. For example, to run the script every Sunday at 2 AM, you would add the following line to your crontab (edited with `crontab -e`):
 
    ```crontab
-   0 2 * * 0 /path/to/sjm_cron_job.sh
+   0 2 * * 0 /path/to/sjm-cron-job.sh
    ```
 
    |      Field       | Value |                    Meaning                    |
@@ -65,4 +65,4 @@ This entire process, when run on a regular cron schedule, provides several benef
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.

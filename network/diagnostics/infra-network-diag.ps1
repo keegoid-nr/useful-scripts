@@ -14,7 +14,7 @@
 
 # Help/Usage function
 function Show-Usage {
-    Write-Host "Usage: .\infra_network_diag.ps1 [-PathpingCount <count>]"
+    Write-Host "Usage: .\infra-network-diag.ps1 [-PathpingCount <count>]"
     Write-Host "  -PathpingCount <count>: Optional. Number of pings for pathping to send (default: 20)."
     exit 1
 }
@@ -61,7 +61,7 @@ $ENDPOINTS = @(
 # --- Script Start ---
 # Create a unique directory for the output files
 $TIMESTAMP = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$OUTPUT_DIR = "infra_network_diag_${TIMESTAMP}"
+$OUTPUT_DIR = "infra-network-diag_${TIMESTAMP}"
 New-Item -ItemType Directory -Path $OUTPUT_DIR | Out-Null
 Write-Host "All outputs will be saved in the .\$($OUTPUT_DIR) directory."
 Write-Host "------------------------------------------------------------"

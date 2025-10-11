@@ -28,7 +28,7 @@ This script requires **GNU Awk** (`gawk`) for its advanced time-handling functio
 
 ### Usage
 
-```bash
+```sh
 ./parking-lot-jobs.sh <path_to_log_file> [number_of_intervals] [--verbose]
 ```
 
@@ -60,7 +60,7 @@ This script filters an SJM log file to remove "ping" or "(SIMPLE)" jobs, which a
 
 ### Usage
 
-```bash
+```sh
 ./remove-ping-logs.sh [input_log_file] [output_log_file]
 ```
 
@@ -69,4 +69,4 @@ This script filters an SJM log file to remove "ping" or "(SIMPLE)" jobs, which a
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.

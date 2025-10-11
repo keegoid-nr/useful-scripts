@@ -15,36 +15,36 @@ A command-line utility to run a suite of diagnostic checks inside a running Kube
 
 ## Prerequisites
 
-- **`bash`**: The script is written in bash and should run on any modern Linux or macOS system.
+- **`sh`**: The script is written in bash and should run on any modern Linux or macOS system.
 - **`kubectl`**: You must have `kubectl` installed and configured to access a Kubernetes cluster.
 
 ## Installation
 
-1. Save the script to a file named `inspect_permissions.sh`.
+1. Save the script to a file named `inspect-permissions.sh`.
 2. Make it executable:
 
-        chmod +x inspect_permissions.sh
+        chmod +x inspect-permissions.sh
 
 3. (Optional) Move it to a directory in your system's `PATH` (like `/usr/local/bin`) to make it runnable from anywhere.
 
 ## Usage
 
-    Usage: ./inspect_permissions.sh -l <label_selector> [-n <namespace>] [-c <container>] [-f <output_file>] [-r <retries>] [-s <seconds>] [-h]
-           <command> | ./inspect_permissions.sh [-n <namespace>] [-c <container>] [-f <output_file>] [-r <retries>] [-s <seconds>]
+    Usage: ./inspect-permissions.sh -l <label_selector> [-n <namespace>] [-c <container>] [-f <output_file>] [-r <retries>] [-s <seconds>] [-h]
+           <command> | ./inspect-permissions.sh [-n <namespace>] [-c <container>] [-f <output_file>] [-r <retries>] [-s <seconds>]
 
 ### Examples
 
 **1. Inspect all pods matching a label:**
 
-    ./inspect_permissions.sh -l "app=my-app"
+    ./inspect-permissions.sh -l "app=my-app"
 
 **2. Inspect pods in a specific namespace and container:**
 
-    ./inspect_permissions.sh -n "production" -l "component=api" -c "api-server"
+    ./inspect-permissions.sh -n "production" -l "component=api" -c "api-server"
 
 **3. Inspect pods from a pipeline with custom retry logic:**
 
-    kubectl get po -n "jobs" -o name | ./inspect_permissions.sh -n "jobs" -r 5 -s 1
+    kubectl get po -n "jobs" -o name | ./inspect-permissions.sh -n "jobs" -r 5 -s 1
 
 ## Checks Performed
 
@@ -61,4 +61,4 @@ The script runs the following commands inside the container:
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.

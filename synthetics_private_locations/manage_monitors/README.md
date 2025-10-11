@@ -33,7 +33,7 @@ This script reads your credentials from environment variables to keep them secur
 
 **For macOS or Linux:**
 
-```bash
+```sh
 export NEW_RELIC_API_KEY="YOUR_API_KEY_HERE"
 export NEW_RELIC_ACCOUNT_ID="YOUR_ACCOUNT_ID_HERE"
 export NEW_RELIC_PRIVATE_LOCATION_GUID="YOUR_PRIVATE_LOCATION_GUID_HERE"
@@ -41,7 +41,7 @@ export NEW_RELIC_PRIVATE_LOCATION_GUID="YOUR_PRIVATE_LOCATION_GUID_HERE"
 
 **For Windows (PowerShell):**
 
-```bash
+```sh
 $env:NEW_RELIC_API_KEY="YOUR_API_KEY_HERE"
 $env:NEW_RELIC_ACCOUNT_ID="YOUR_ACCOUNT_ID_HERE"
 $env:NEW_RELIC_PRIVATE_LOCATION_GUID="YOUR_PRIVATE_LOCATION_GUID_HERE"
@@ -51,7 +51,7 @@ $env:NEW_RELIC_PRIVATE_LOCATION_GUID="YOUR_PRIVATE_LOCATION_GUID_HERE"
 
 The script uses the `httpx` library to make API requests. Install it using pip:
 
-```bash
+```sh
 pip install httpx
 ```
 
@@ -74,7 +74,7 @@ Create a file named `monitors.json` in the same directory as the script. This fi
 
 Run the script from your terminal:
 
-```bash
+```sh
 python3 manage-monitors.py [-t/--types TYPE [TYPE ...]]
 ```
 
@@ -95,7 +95,7 @@ The script will present a main menu of actions. The optional `-t`/`--types` flag
 * **Create (Default Behavior):**
   If run without flags, the script will default to creating all monitor types.
 
-  ```bash
+  ```sh
   python3 manage-monitors.py
   # Choose '1'. It will then prompt for quantity and period for all types
   ```
@@ -103,7 +103,7 @@ The script will present a main menu of actions. The optional `-t`/`--types` flag
 * **Create Specific Types:**
   Use the `-t` or `--types` flag to specify which types to create.
 
-  ```bash
+  ```sh
   # Using the long flag
   python3 manage-monitors.py --types SIMPLE BROWSER
   # Choose '1'. It will then prompt for quantity and period for only SIMPLE and BROWSER
@@ -116,14 +116,14 @@ The script will present a main menu of actions. The optional `-t`/`--types` flag
 
 * **Manage All Monitors:**
 
-  ```bash
+  ```sh
   python3 manage-monitors.py
   # Choose '2', '3', or '4'. A full list of relevant monitors will be shown
   ```
 
 * **Manage Only Scripted Monitors:**
 
-  ```bash
+  ```sh
   python3 manage-monitors.py -t SCRIPT_BROWSER SCRIPT_API
   # Choose '2', '3', or '4'. Only scripted monitors will be listed
   ```
@@ -131,7 +131,7 @@ The script will present a main menu of actions. The optional `-t`/`--types` flag
 * **Selection Prompt:**
   When managing monitors, you will be prompted to select which ones to act on. You can use ranges, commas, or simply press Enter to select all.
 
-  ```bash
+  ```sh
   # Which monitors to act on? (e.g., 1-3, 5, 8 or press Enter for ALL): 1-2,4
   ```
 
@@ -139,18 +139,18 @@ The script will present a main menu of actions. The optional `-t`/`--types` flag
 
 * **Check results for all monitor types:**
 
-  ```bash
+  ```sh
   python3 manage-monitors.py
   # Choose '5'. It will then prompt for the number of minutes to query
   ```
 
 * **Check results for specific monitor types:**
 
-  ```bash
+  ```sh
   python3 manage-monitors.py -t SCRIPT_API SCRIPT_BROWSER
   # Choose '5'. It will show results only for the specified monitor types
   ```
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.

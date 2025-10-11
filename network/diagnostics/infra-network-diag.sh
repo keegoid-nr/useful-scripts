@@ -154,7 +154,7 @@ ENDPOINTS=(
 # --- Script Start ---
 # Create a unique, timestamped directory to store all output files.
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR="infra_network_diag_${TIMESTAMP}"
+OUTPUT_DIR="infra-network-diag_${TIMESTAMP}"
 mkdir -p "${OUTPUT_DIR}"
 echo "✅ All outputs will be saved in the ./${OUTPUT_DIR}/ directory."
 echo "✅ Using mtr packet count of ${MTR_PACKET_COUNT}."
