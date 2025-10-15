@@ -83,7 +83,13 @@ inspect_from_repo() {
             echo "Please add the repo manually and try again." >&2; exit 1
         fi
     fi
-    helm repo update "$repo" >/dev/null 2>&1
+    echo "Updating Helm repository '$repo'..." >&2
+    update_output_file="$WORK_DIR/update.out"
+    if ! helm repo update "$repo" > "$update_output_file" 2>&1; then
+        echo -e "${RED}Error: 'helm repo update' failed for repo '$repo'.${RESET}" >&2
+        cat "$update_output_file" >&2
+        exit 1
+    fi
 
     local version_flag=""
     if [ -n "$chart_version" ]; then
@@ -91,37 +97,52 @@ inspect_from_repo() {
         version_flag="--version $chart_version"
     else
         log "Inspecting the latest version of '$repo_chart'..."
-        latest_version=$(helm search repo "$repo_chart" --versions -o json | jq -r '.[0].version')
+        search_output_file="$WORK_DIR/search.out"
+        if ! helm search repo "$repo_chart" --versions -o json > "$search_output_file" 2>&1; then
+            echo -e "${RED}Error: 'helm search repo' failed for chart '$repo_chart'.${RESET}" >&2
+            cat "$search_output_file" >&2
+            exit 1
+        fi
+
+        latest_version=$(jq -r '.[0].version' "$search_output_file")
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Error: 'jq' failed to parse search results for chart '$repo_chart'.${RESET}" >&2
+            echo -e "${YELLOW}Helm search output:${RESET}" >&2
+            cat "$search_output_file" >&2
+            exit 1
+        fi
+
         if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]; then
             echo -e "${RED}Error: Could not find the latest version for '$repo_chart'.${RESET}" >&2
+            echo -e "${YELLOW}Helm search output:${RESET}" >&2
+            cat "$search_output_file" >&2
             exit 1
         fi
         version_flag="--version $latest_version"
     fi
 
     cd "$WORK_DIR"
+    pull_output_file="$WORK_DIR/pull.out"
     # shellcheck disable=SC2086
-    helm pull "$repo_chart" --untar $version_flag >/dev/null 2>&1
+    if ! helm pull "$repo_chart" --untar $version_flag > "$pull_output_file" 2>&1; then
+        echo -e "${RED}Error: 'helm pull' command failed for chart '$repo_chart'.${RESET}" >&2
+        cat "$pull_output_file" >&2
+        exit 1
+    fi
     cd "$chart"
 
-    MAX_RETRIES=3
-    RETRY_COUNT=0
-    SUCCESS=false
-    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        UPDATE_OUTPUT=$(helm dependency update 2>&1)
-        EXIT_CODE=$?
-        if [ $EXIT_CODE -eq 0 ]; then SUCCESS=true; break; fi
-        RETRY_COUNT=$((RETRY_COUNT+1))
+    echo "Updating chart dependencies..." >&2
+    local UPDATE_OUTPUT
+    if ! UPDATE_OUTPUT=$(helm dependency update 2>&1); then
+        # Command failed, check for EOF
         if [[ "$UPDATE_OUTPUT" == *"EOF"* ]]; then
             echo -e "\n${RED}A network connectivity issue was detected (EOF error).${RESET}" >&2
             echo -e "${YELLOW}This is common for New Relic employees. Please ensure your WARP by Cloudflare VPN is connected.${RESET}\n" >&2
         fi
-        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-            echo -e "${YELLOW}Retrying dependency update...${RESET} (Attempt $RETRY_COUNT/$MAX_RETRIES)" >&2
-            sleep 5
-        fi
-    done
-    if [ "$SUCCESS" != true ]; then echo -e "${RED}Error: helm dependency update failed after $MAX_RETRIES attempts.${RESET}" >&2; exit 1; fi
+        echo -e "${RED}Error: helm dependency update failed.${RESET}" >&2
+        echo -e "${YELLOW}Output:${RESET}\n$UPDATE_OUTPUT" >&2
+        exit 1
+    fi
 
     parent_version=$(grep '^version:' "Chart.yaml" | awk '{print $2}')
     versions_str="${chart}|${parent_version}§"
@@ -130,7 +151,15 @@ inspect_from_repo() {
     fi
 
     cd "$WORK_DIR"
-    images_by_chart=$(helm template "release-name" ./"$chart" "${set_flags[@]}" --debug 2>&1 | parse_template_output "$chart")
+    template_output_file="$WORK_DIR/template.out"
+    if ! helm template "release-name" ./"$chart" "${set_flags[@]}" --debug > "$template_output_file" 2>&1; then
+        echo -e "${RED}Error: 'helm template' command failed.${RESET}" >&2
+        echo -e "${YELLOW}Helm output:${RESET}" >&2
+        cat "$template_output_file" >&2
+        exit 1
+    fi
+
+    images_by_chart=$(cat "$template_output_file" | parse_template_output "$chart")
 
     display_results "$images_by_chart"
 }
@@ -167,6 +196,12 @@ inspect_newrelic_interactive() {
     if [ -z "$chart_to_inspect" ]; then echo "No chart selected. Exiting." >&2; exit 1; fi
 
     local preset_flags; preset_flags=($(get_preset_flags_from_file "$chart_to_inspect"))
+
+    if [ ${#preset_flags[@]} -eq 0 ]; then
+        echo -e "${RED}Error: No preset found for '$chart_to_inspect' in 'chart-presets.txt'.${RESET}" >&2
+        echo -e "${YELLOW}This chart might require specific '--set' flags to render correctly.${RESET}" >&2
+        exit 1
+    fi
 
     # Special handling for charts that have moved to their own repos.
     if [[ "$chart_to_inspect" == "newrelic/newrelic-infra-operator" ]]; then
@@ -355,7 +390,8 @@ display_results() {
     local images_by_chart=$1
 
     if [ -z "$images_by_chart" ]; then
-        echo -e "${RED}No images found. This could be due to a templating error. Try supplying required values with --set.${RESET}" >&2
+        echo -e "${RED}No images found. This could be due to a templating error.${RESET}" >&2
+        echo -e "${YELLOW}Tip: Try running the helm template command directly with the --debug flag to diagnose the issue.${RESET}" >&2
         exit 1
     fi
     echo # Add a newline for spacing
@@ -365,6 +401,11 @@ display_results() {
 
 # --- Main Execution ---
 main() {
+    if [[ "$1" == "--debug" ]]; then
+        set -x
+        shift
+    fi
+
     for arg in "$@"; do
         if [[ "$arg" == "--local" ]]; then
             if [ "$#" -ne 1 ]; then
