@@ -27,6 +27,15 @@ Before running the script, ensure you have the following command-line tools inst
 * `sort`
 * `uniq`
 
+## Options
+
+* `--debug`: Enables verbose debug tracing by running the script with `set -x`. This is useful for troubleshooting the script's behavior. This flag must be the first argument passed to the script.
+
+   ```sh
+   # Example: Run in New Relic mode with debug tracing
+   ./helm-image-inspector.sh --debug --newrelic
+   ```
+
 ## Usage
 
 1. **Make the script executable:**
