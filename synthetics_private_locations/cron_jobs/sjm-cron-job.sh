@@ -9,6 +9,15 @@
 # Website: github.com/keegoid-nr/useful-scripts
 # License: Apache License 2.0
 
+# Default values for global variables
+DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
+DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
+SJM_IMAGE="newrelic/synthetics-job-manager:latest"
+
+# Use provided command-line arguments or fallback to default values
+SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
+SJM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
+
 # Usage function
 function usage {
   echo "Usage: $0 [SJM_CONTAINER_NAME] [SJM_PRIVATE_LOCATION_KEY]"
@@ -28,15 +37,6 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
   usage
   exit 0
 fi
-
-# Default values for global variables
-DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
-DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
-SJM_IMAGE="newrelic/synthetics-job-manager:latest"
-
-# Use provided command-line arguments or fallback to default values
-SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
-SJM_PRIVATE_LOCATION_KEY="${2:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
 
 # A recursive function to stop all containers and prune containers, images, and networks not in use until no docker containers exist.
 function stop_and_prune_containers {

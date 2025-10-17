@@ -12,6 +12,19 @@
 # Make sure you've completed the necessary pre-requisites:
 # https://docs.newrelic.com/docs/synthetics/synthetic-monitoring/private-locations/install-job-manager/#podman-dependencies
 
+# Default values for global variables
+DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
+DEFAULT_SJM_POD_NAME="YOUR_SJM_POD_NAME"
+DEFAULT_HOST_IP_ADDRESS="YOUR_HOST_IP_ADDRESS"
+DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
+SJM_IMAGE="docker.io/newrelic/synthetics-job-manager:latest"
+
+# Use provided command-line arguments or fallback to default values
+SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
+SJM_POD_NAME="${2:-$DEFAULT_SJM_POD_NAME}"
+HOST_IP_ADDRESS="${3:-$DEFAULT_HOST_IP_ADDRESS}"
+SJM_PRIVATE_LOCATION_KEY="${4:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
+
 # Usage function
 function usage {
   echo "Usage: $0 [SJM_CONTAINER_NAME] [SJM_POD_NAME] [HOST_IP_ADDRESS] [SJM_PRIVATE_LOCATION_KEY]"
@@ -33,19 +46,6 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
   usage
   exit 0
 fi
-
-# Default values for global variables
-DEFAULT_SJM_CONTAINER_NAME="YOUR_SJM_CONTAINER_NAME"
-DEFAULT_SJM_POD_NAME="YOUR_SJM_POD_NAME"
-DEFAULT_HOST_IP_ADDRESS="YOUR_HOST_IP_ADDRESS"
-DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
-SJM_IMAGE="docker.io/newrelic/synthetics-job-manager:latest"
-
-# Use provided command-line arguments or fallback to default values
-SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
-SJM_POD_NAME="${2:-$DEFAULT_SJM_POD_NAME}"
-HOST_IP_ADDRESS="${3:-$DEFAULT_HOST_IP_ADDRESS}"
-SJM_PRIVATE_LOCATION_KEY="${4:-$DEFAULT_SJM_PRIVATE_LOCATION_KEY}"
 
 # Function to stop and prune containers and pods
 function stop_and_prune_containers {
