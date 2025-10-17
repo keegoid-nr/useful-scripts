@@ -46,20 +46,17 @@ The cron jobs scripts help to ensure the SJM container runs reliability and gets
 
 The scripts perform the following actions in a sequence designed to keep the Synthetics Job Manager (SJM) and its related containers running and up-to-date:
 
-1. **Check for a Running Container**: It first checks if a container named `synthetics-job-manager` is currently running.
+1. **Stop and Prune**: It first stops any running Synthetics Job Manager or runtime containers and then prunes the system to remove unused containers, networks, and images. This ensures a clean state for the next run.
 
-2. **Restart and Cleanup**: The script initiates a cleanup and restart process:
+2. **Pull Synthetics Images**: The script pre-pulls the latest images for the Synthetics runtimes (ping, API, and browser). This is done to avoid potential timeouts on slow network connections when the Job Manager starts up and tries to pull them itself.
 
-    a.  **Stop All Containers**: It stops all currently running containers on the host. This is a critical step because the Synthetics Job Manager only checks for and pulls updated Synthetics runtime images on its own startup. Stopping all containers ensures a clean slate.
-
-    b.  **System Prune**: It runs a `system prune -af` command. This forcefully removes all stopped containers, unused networks, and dangling images. This helps to keep the container runtime environment clean and frees up disk space.
-
-    c.  **Start SJM Container**: A new `synthetics-job-manager` container is started using the `latest` image tag.
+3. **Start SJM Container**: A new `synthetics-job-manager` container is started using the `latest` image tag. The `--pull missing` flag is used, so if the image is already present locally (from the previous step), it won't be pulled again.
 
 This entire process, when run on a regular cron schedule, provides several benefits:
 
 - **High Availability**: Ensures the SJM is always running and available to execute synthetic monitors.
-- **Automatic Updates**: By pruning the system and re-pulling the `latest` image, the script ensures that both the Synthetics Job Manager and the Synthetics runtimes are kept up-to-date automatically.
+- **Automatic Updates**: By stopping the old containers, pruning the system, and re-pulling the `latest` images, the script ensures that both the Synthetics Job Manager and the Synthetics runtimes are kept up-to-date automatically.
+- **Improved Reliability**: Pre-pulling the runtime images makes the startup process more reliable, especially on networks with slower connections to the image registry.
 - **Clean Environment**: Regularly prunes the system to prevent the accumulation of old containers, networks, and images, which helps to maintain the health of the host.
 - **Docker Root Cleanup**: You may also consider cleaning the whole Docker root from time to time, especially if disk space is getting low. This script will not handle that aside from what is cleaned with the prune command.
 
