@@ -41,7 +41,6 @@ DEFAULT_HOST_IP_ADDRESS="YOUR_HOST_IP_ADDRESS"
 DEFAULT_SJM_PRIVATE_LOCATION_KEY="YOUR_SJM_PRIVATE_LOCATION_KEY"
 SJM_IMAGE="docker.io/newrelic/synthetics-job-manager:latest"
 
-
 # Use provided command-line arguments or fallback to default values
 SJM_CONTAINER_NAME="${1:-$DEFAULT_SJM_CONTAINER_NAME}"
 SJM_POD_NAME="${2:-$DEFAULT_SJM_POD_NAME}"
@@ -59,8 +58,19 @@ function stop_and_prune_containers {
     podman system prune -af
 }
 
+# A function to pull the runtime images
+function pull_images {
+  podman pull docker.io/newrelic/synthetics-ping-runtime:latest
+  podman pull docker.io/newrelic/synthetics-node-api-runtime:latest
+  podman pull docker.io/newrelic/synthetics-node-browser-runtime:latest
+}
+
 # Stop and prune existing containers and pods
 stop_and_prune_containers
+
+# pull the runtime images before starting the job manager to avoid timeouts on slow connections
+# in conjunction with --pull missing, this will allow the job manager to quickly skip over the pulling of images on startup
+pull_images
 
 # Create a new pod with port mappings and host entry for Podman API
 # Replace HOST_IP_ADDRESS with the actual IP address of your host
@@ -75,6 +85,5 @@ podman run \
     -e "CONTAINER_ENGINE=PODMAN" \
     -e "PODMAN_API_SERVICE_PORT=8000" \
     -e "PODMAN_POD_NAME=$SJM_POD_NAME" \
-    -d \
-    --restart unless-stopped \
+    -d --restart unless-stopped --pull missing \
     "$SJM_IMAGE" | tee -a podman-run.log 2>&1
