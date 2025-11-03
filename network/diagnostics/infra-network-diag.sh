@@ -185,7 +185,7 @@ echo "------------------------------------------------------------"
 # --- Section 3: Network Tests for New Relic Endpoints ---
 echo "🔎 Running network tests for New Relic endpoints..."
 for endpoint in "${ENDPOINTS[@]}"; do
-  echo "--- Testing ${endpoint} ---"
+  echo -e "\n--- Testing ${endpoint} ---"
 
   # Perform a standard DNS lookup and a verbose curl test.
   # The curl to /cdn-cgi/trace is a Cloudflare endpoint that returns useful connection data.
@@ -197,7 +197,12 @@ for endpoint in "${ENDPOINTS[@]}"; do
       host)     host "${endpoint}" > "${dns_lookup_file}" ;;
       nslookup) nslookup "${endpoint}" > "${dns_lookup_file}" ;;
   esac
-  curl -v "https://${endpoint}/cdn-cgi/trace" &> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+  echo -e "\n--- Running verbose curl for ${endpoint}/cdn-cgi/trace ---" &> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+  curl -v "https://${endpoint}/cdn-cgi/trace" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+  if [ "$endpoint" != "infrastructure-command-api.newrelic.com" ]; then
+    echo -e "\n\n--- Running verbose curl for ${endpoint}/worker/health ---" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+    curl -v "https://${endpoint}/worker/health" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+  fi
 
   # Check raw TCP connectivity to port 443.
   # First, try 'nc' which is a standard network utility.
@@ -234,9 +239,8 @@ for endpoint in "${ENDPOINTS[@]}"; do
       esac
     done
   fi
-  echo "--- Finished ${endpoint} ---"
 done
-echo "------------------------------------------------------------"
+echo -e "\n------------------------------------------------------------"
 
 
 # --- Section 4: Network Tests for Local DNS Resolvers ---
@@ -258,7 +262,7 @@ for server in "${DNS_SERVERS[@]}"; do
     echo "[*] Running mtr to DNS resolver ${server}. This may take a minute..."
     mtr -bzwT -c ${MTR_PACKET_COUNT} "${server}" > "${OUTPUT_DIR}/mtr_dns_${server}.txt"
 done
-echo "------------------------------------------------------------"
+echo -e "\n------------------------------------------------------------"
 
 
 # --- Section 5: Collect Firewall Details and Logs ---
@@ -276,7 +280,7 @@ if [ -d "/var/db/newrelic-infra/logs" ]; then cp -r /var/db/newrelic-infra/logs 
 journalctl --since "1 hour ago" > "${OUTPUT_DIR}/journalctl_last_hour.txt"
 if [ -f "/var/log/messages" ]; then tail -n 5000 /var/log/messages > "${OUTPUT_DIR}/messages_last5000.txt"; fi
 if [ -f "/var/log/syslog" ]; then tail -n 5000 /var/log/syslog > "${OUTPUT_DIR}/syslog_last5000.txt"; fi
-echo "------------------------------------------------------------"
+echo -e "\n------------------------------------------------------------"
 
 
 # --- Section 6: Final Step ---
@@ -288,4 +292,6 @@ tar -czvf "${OUTPUT_DIR}.tar.gz" "${OUTPUT_DIR}"
 if [ -n "$SUDO_USER" ]; then
     chown -R "${SUDO_USER}:${SUDO_GID}" "${OUTPUT_DIR}" "${OUTPUT_DIR}.tar.gz" &> /dev/null
 fi
-echo "✅ Done! Please attach the '${OUTPUT_DIR}.tar.gz' file to your New Relic support case for analysis."
+echo -e "\n----------------------------------------------------------------------------------------------------------------------------"
+echo      "✅ Done! Please attach the '${OUTPUT_DIR}.tar.gz' file to your New Relic support case for analysis."
+echo      "----------------------------------------------------------------------------------------------------------------------------"
