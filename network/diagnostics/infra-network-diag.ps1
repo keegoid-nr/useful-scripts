@@ -93,7 +93,7 @@ foreach ($endpoint in $ENDPOINTS) {
   # Path analysis using pathping
   Write-Host "[*] Running pathping for ${endpoint}. This may take several minutes..."
   Write-Host "[*] Note: pathping uses ICMP and may provide incomplete results if firewalls block it."
-  pathping.exe -n -q $PathpingCount "${endpoint}" | Out-File -FilePath "${OUTPUT_DIR}\pathping_${endpoint}.txt"
+  pathping.exe -q -n $PathpingCount "${endpoint}" | Out-File -FilePath "${OUTPUT_DIR}\pathping_${endpoint}.txt"
 
   Write-Host "--- Finished ${endpoint} ---"
 }
