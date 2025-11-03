@@ -224,7 +224,7 @@ for endpoint in "${ENDPOINTS[@]}"; do
   # -w: Use wide report format for full hostnames.
   # -T: Use TCP mode, which is more likely to pass through firewalls than ICMP.
   echo "[*] Running mtr for ${endpoint}. This may take a minute..."
-  mtr -bzwT -c ${MTR_PACKET_COUNT} "${endpoint}" > "${OUTPUT_DIR}/mtr_${endpoint}.txt"
+  mtr -bzwr -T -P 443 -c ${MTR_PACKET_COUNT} "${endpoint}" > "${OUTPUT_DIR}/mtr_${endpoint}.txt"
 
   # Run targeted DNS lookups against each specific server from resolv.conf.
   # This helps diagnose issues with a single faulty DNS resolver.
