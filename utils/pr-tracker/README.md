@@ -20,7 +20,7 @@ A Python script to track the status (open, merged, unmerged) and size (lines cha
 
 ### Installation
 
-1. **Create Project Files**: Place the script (`pr-tracker.py`) in a new directory.
+1. **Create Project Files**: Place the script (`pr_tracker.py`) in a new directory.
 2. **Create `requirements.txt`**: In the same directory, create a `requirements.txt` file with the following content:
 
     ```txt
@@ -52,14 +52,14 @@ A Python script to track the status (open, merged, unmerged) and size (lines cha
     ```
 
 3. **Change Target Repository (Optional)**
-    The script is hardcoded to target the `newrelic/docs-website` repository. To change this, edit the `REPO_OWNER` and `REPO_NAME` variables at the top of the `pr-tracker.py` script.
+    The script is hardcoded to target the `newrelic/docs-website` repository. To change this, edit the `REPO_OWNER` and `REPO_NAME` variables at the top of the `pr_tracker.py` script.
 
 ## Usage
 
 1. Run the script from your terminal:
 
     ```sh
-    python pr-tracker.py
+    python pr_tracker.py
     ```
 
 2. When prompted, enter the number of months you wish to search back and press Enter.
@@ -71,7 +71,7 @@ A Python script to track the status (open, merged, unmerged) and size (lines cha
 ### Example Output
 
 ```txt
-$ python pr-tracker.py
+$ python pr_tracker.py
 Enter the number of months to search: 6
 
 Fetching Closed PRs: 100%|██████████████████| 7/7 [00:15<00:00,  2.15s/it]

@@ -15,7 +15,7 @@ The scripts and tools in this repository are not officially supported by New Rel
 ### Kubernetes
 
 * [Helm Image Inspector](./kubernetes/dependencies/helm-image-inspector.sh): Inspects images in a Helm chart.
-* [Get GKE Info](./kubernetes/gke_info/get-gke-info.sh): Retrieves information about a GKE cluster.
+* [Get GKE Info](./kubernetes/gke-info/get-gke-info.sh): Retrieves information about a GKE cluster.
 * [Inspect Permissions](./kubernetes/permissions/inspect-permissions.sh): Inspects user/service account permissions in Kubernetes.
 
 ### Network
@@ -26,16 +26,16 @@ The scripts and tools in this repository are not officially supported by New Rel
 
 ### Synthetics Private Locations
 
-* [SJM Cron Job](./synthetics_private_locations/cron_jobs/sjm-cron-job.sh): Example cron job for running a Synthetics Job Manager.
-* [SJM Cron Job (Podman)](./synthetics_private_locations/cron_jobs/sjm-cron-job-podman.sh): Example cron job for running a Synthetics Job Manager using Podman.
-* [Manage Monitors](./synthetics_private_locations/manage_monitors/manage-monitors.py): A script to manage Synthetics monitors.
-* [Parking Lot Jobs](./synthetics_private_locations/throughput/parking-lot-jobs.sh): Script for managing parking lot jobs.
-* [Remove Ping Logs](./synthetics_private_locations/throughput/remove-ping-logs.sh): Removes ping logs.
+* [SJM Cron Job](./synthetics-private-locations/cron_jobs/sjm-cron-job.sh): Example cron job for running a Synthetics Job Manager.
+* [SJM Cron Job (Podman)](./synthetics-private-locations/cron_jobs/sjm-cron-job-podman.sh): Example cron job for running a Synthetics Job Manager using Podman.
+* [Manage Monitors](./synthetics-private-locations/manage_monitors/manage-monitors.py): A script to manage Synthetics monitors.
+* [Parking Lot Jobs](./synthetics-private-locations/throughput/parking-lot-jobs.sh): Script for managing parking lot jobs.
+* [Remove Ping Logs](./synthetics-private-locations/throughput/remove-ping-logs.sh): Removes ping logs.
 
 ### Utils
 
 * [Decode HTML](./utils/decode-html.sh): Decodes HTML entities.
-* [PR Tracker](./utils/pr_tracker/pr-tracker.py): Tracks pull requests.
+* [PR Tracker](./utils/pr-tracker/pr_tracker.py): Tracks pull requests.
 
 ## Contributing
 

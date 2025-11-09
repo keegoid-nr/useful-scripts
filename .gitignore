@@ -91,4 +91,5 @@ $RECYCLE.BIN/
 **/*.log
 **/*.json
 **/*.env
-utils/pr_tracker/*.txt
+utils/atlassian-dev/*.txt
+utils/pr-tracker/*.txt
