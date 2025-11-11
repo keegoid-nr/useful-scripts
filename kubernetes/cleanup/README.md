@@ -1,5 +1,7 @@
 # Kubernetes Cleanup Script
 
+![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg)
+
 This script is used to clean up Kubernetes resources based on a label selector. It can remove both namespaced and cluster-scoped resources.
 
 ## Description
