@@ -17,13 +17,14 @@ Usage:
   cat [filename] | ./decode-html.sh
 
 
-Function to display usage and exit
+'
+
+# Function to display usage and exit
 usage() {
   echo "Usage: $0 [filename | --clipboard | -c]" >&2
   echo "Or pipe content to it: cat <filename> | $0" >&2
   exit 1
 }
-'
 
 INPUT_STREAM=""
 CLIPBOARD_MODE=false # Flag to track if we're using the clipboard
