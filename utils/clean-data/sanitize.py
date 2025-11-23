@@ -66,7 +66,7 @@ class RedactionPatterns:
         
         # 4. Secrets & Keys
         # Broader key assignment matching
-        self.api_keys_assignment = re.compile(r'(?i)\b(api_key|access_token|secret|private_key|key|token)\b\s*[:=]\s*[A-Za-z0-9_\-]+')
+        self.api_keys_assignment = re.compile(r'(?i)(["\']?)\b(api_key|access_token|secret|private_key|key|token|license[-_]?key)\b\1\s*[:=]\s*(["\']?)[A-Za-z0-9_\-]+\3')
         # Specific high-entropy patterns
         self.aws_key_id = re.compile(r'\b(AKIA|ASIA)[0-9A-Z]{16}\b')
         self.google_api_key = re.compile(r'\bAIza[0-9A-Za-z\-_]{35}\b')
@@ -74,6 +74,30 @@ class RedactionPatterns:
         
         # 5. Business Logic Targets (Competitors / Products)
         self.competitors = re.compile(r'(?i)\b(Salesforce|Oracle|SAP|Datadog|Splunk|Dynatrace|AppDynamics|Sumologic|Elastic|Grafana|Zabbix|Nagios|SolarWinds|Microsoft|Google|AWS|Amazon|IBM|Cisco|Intel|AMD|Nvidia|Apple|Meta|Facebook|Netflix|Adobe|Intuit|ServiceNow|Snowflake|Atlassian|Jira|Confluence|Slack|Zoom|Twilio|HPE|HP|Dell|Lenovo|Samsung|Sony|Stripe|PayPal|Square|Visa|Mastercard)\b', re.IGNORECASE)
+        
+        # 6. Cloud & Environment
+        # New Relic Environment Variables (NEW_RELIC_KEY=VALUE)
+        # 1. Assignment Quoted: KEY="VALUE" or KEY='VALUE'
+        self.nr_env_assignment_quoted = re.compile(r'(?i)(["\']?)\b((?:NEW_RELIC_|NRIA_|NEWRELIC_)[A-Z0-9_]+)\b\1(\s*(?:[:=]|\s+)\s*)(["\'])(.*?)\4')
+        # 2. Assignment Unquoted: KEY=VALUE or KEY: VALUE (but not "KEY value:" which is structured)
+        self.nr_env_assignment_unquoted = re.compile(r'(?i)(["\']?)\b((?:NEW_RELIC_|NRIA_|NEWRELIC_)[A-Z0-9_]+)\b\1(\s*(?:[:=]|\s+)\s*)(?!value\s*:)([^\s"\']+)')
+        # 3. Structured Quoted: name: KEY value: "VALUE"
+        self.nr_env_structured_quoted = re.compile(r'(?i)(name\s*:\s*(["\']?)\b(?:NEW_RELIC_|NRIA_|NEWRELIC_)[A-Z0-9_]+\b\2\s+value\s*:\s*)(["\'])(.*?)\3')
+        # 4. Structured Unquoted: name: KEY value: VALUE
+        self.nr_env_structured_unquoted = re.compile(r'(?i)(name\s*:\s*(["\']?)\b(?:NEW_RELIC_|NRIA_|NEWRELIC_)[A-Z0-9_]+\b\2\s+value\s*:\s*)([^\s"\']+)')
+        
+        # Private Location Keys
+        # 1. Assignment Quoted: KEY="VALUE" or KEY='VALUE'
+        self.private_loc_assignment_quoted = re.compile(r'(?i)(["\']?)\b((?:synthetics\.)?privateLocationKey|PRIVATE_LOCATION_KEY)\b\1(\s*(?:[:=]|\s+)\s*)(["\'])(.*?)\4')
+        # 2. Assignment Unquoted: KEY=VALUE or KEY: VALUE
+        self.private_loc_assignment_unquoted = re.compile(r'(?i)(["\']?)\b((?:synthetics\.)?privateLocationKey|PRIVATE_LOCATION_KEY)\b\1(\s*(?:[:=]|\s+)\s*)([^\s"\']+)')
+        
+        # AWS ARN
+        self.aws_arn = re.compile(r'arn:aws:[a-z0-9-]+:[a-z0-9-]*:[0-9]*:[a-zA-Z0-9-_/]+')
+        # Azure Resource ID
+        self.azure_id = re.compile(r'(?i)/subscriptions/[a-f0-9-]+/resourceGroups/[a-zA-Z0-9-_]+/providers/[a-zA-Z0-9-_/.]+')
+        # GCP Resource ID (projects/project-id/zones/zone/instances/instance-id)
+        self.gcp_id = re.compile(r'projects/[a-z0-9-]+/(zones|regions)/[a-z0-9-]+/[a-z0-9-/]+')
 
 class RedactionEngine:
     """
@@ -151,7 +175,22 @@ class RedactionEngine:
             df[col] = df[col].str.replace(self.patterns.aws_key_id, '[REDACTED: AWS_KEY]', regex=True)
             df[col] = df[col].str.replace(self.patterns.google_api_key, '[REDACTED: GOOGLE_KEY]', regex=True)
             df[col] = df[col].str.replace(self.patterns.stripe_key, '[REDACTED: STRIPE_KEY]', regex=True)
-            df[col] = df[col].str.replace(self.patterns.api_keys_assignment, '[REDACTED: API_KEY_ASSIGNMENT]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.stripe_key, '[REDACTED: STRIPE_KEY]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.api_keys_assignment, r'\1\2\1\3[REDACTED: API_KEY_ASSIGNMENT]\3', regex=True)
+
+            # 1.5 Cloud & Environment
+            # Apply structured first to avoid assignment regex matching the "value:" label
+            df[col] = df[col].str.replace(self.patterns.nr_env_structured_quoted, r'\1\3[REDACTED: NR_ENV_VAR]\3', regex=True)
+            df[col] = df[col].str.replace(self.patterns.nr_env_structured_unquoted, r'\1[REDACTED: NR_ENV_VAR]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.nr_env_assignment_quoted, r'\1\2\1\3\4[REDACTED: NR_ENV_VAR]\4', regex=True)
+            df[col] = df[col].str.replace(self.patterns.nr_env_assignment_unquoted, r'\1\2\1\3[REDACTED: NR_ENV_VAR]', regex=True)
+            
+            df[col] = df[col].str.replace(self.patterns.private_loc_assignment_quoted, r'\1\2\1\3\4[REDACTED: PRIVATE_LOCATION_KEY]\4', regex=True)
+            df[col] = df[col].str.replace(self.patterns.private_loc_assignment_unquoted, r'\1\2\1\3[REDACTED: PRIVATE_LOCATION_KEY]', regex=True)
+            
+            df[col] = df[col].str.replace(self.patterns.aws_arn, '[REDACTED: AWS_ARN]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.azure_id, '[REDACTED: AZURE_ID]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.gcp_id, '[REDACTED: GCP_ID]', regex=True)
 
             # 2. PII & Financial
             df[col] = df[col].str.replace(self.patterns.phone, '[REDACTED: PHONE]', regex=True)
