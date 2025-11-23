@@ -55,7 +55,9 @@ class RedactionPatterns:
         self.support_update_name = re.compile(r'(?i)(Your support case has been updated by\s+)([^.]+?)(?=\.|$)')
         # Case Log Pattern (CM-ID,"Date",Name,Type)
         # Only redact if Type is "AllUsers"
-        self.case_log_pattern = re.compile(r'(CM-\d+,\s*"[^"]+",\s*)([^,]+)(,\s*AllUsers)')
+        # Case Log Pattern (CM-ID,"Date",Name,Type)
+        # Only redact if Type is "AllUsers"
+        # self.case_log_pattern = re.compile(r'(CM-\d+,\s*"[^"]+",\s*)([^,]+)(,\s*AllUsers)')
         
         # 3. Financial & Identifiers
         # Basic Luhn-compatible patterns (13-19 digits) - We will verify these with code
@@ -159,7 +161,8 @@ class RedactionEngine:
             # Redact names in support case updates (Your support case has been updated by Name.)
             df[col] = df[col].str.replace(self.patterns.support_update_name, r'\1[REDACTED: NAME]', regex=True)
             # Redact names in case log patterns (CM-ID,"Date",Name,Type)
-            df[col] = df[col].str.replace(self.patterns.case_log_pattern, r'\1[REDACTED: NAME]\3', regex=True)
+            # Redact names in case log patterns (CM-ID,"Date",Name,Type)
+            # df[col] = df[col].str.replace(self.patterns.case_log_pattern, r'\1[REDACTED: NAME]\3', regex=True)
             
             # Credit Cards need custom logic (Luhn), so we use apply() for just this pattern
             # This is slower than pure vectorization but necessary for accuracy.
@@ -203,40 +206,7 @@ class RedactionEngine:
                 # For now, relying on the improved patterns above is a huge step up.
                 pass
 
-        # 6. Cross-Column Logic: Case Logs (CM-ID, Date, Name, Type)
-        # The regex self.case_log_pattern works if the line is a single string.
-        # But if Pandas parses it into columns, we need to look across columns.
-        # Pattern: [CM-ID] [Date] [Name] [Type=AllUsers]
-        # We look for a column containing "AllUsers" and check if 3 columns back has "CM-".
-        
-        for i in range(len(df.columns)):
-            # We need at least 3 columns before this one (indices 0, 1, 2 exist if i=3)
-            if i < 3:
-                continue
-                
-            # Check if current column (Type) has "AllUsers"
-            # We use a mask for rows where this is true
-            type_col = df.iloc[:, i]
-            # Check if it contains AllUsers (exact or substring? User said "AllUsers," so maybe exact or strip)
-            # The repro showed "AllUsers" as the value.
-            is_all_users = type_col.str.contains(r'\bAllUsers\b', case=False, na=False)
-            
-            if not is_all_users.any():
-                continue
-                
-            # Check if column i-3 (ID) has "CM-" prefix
-            id_col = df.iloc[:, i-3]
-            is_cm_id = id_col.str.contains(r'^CM-\d+', na=False)
-            
-            # Combine masks: Row must be AllUsers AND have CM- ID
-            target_mask = is_all_users & is_cm_id
-            
-            if target_mask.any():
-                logger.info(f"Detected structured Case Log pattern. Redacting names in column {df.columns[i-1]}...")
-                # Redact column i-1 (Name) where mask is True
-                # We replace the entire cell with [REDACTED: NAME] or just the name?
-                # Since it's a Name column, we replace the value.
-                df.iloc[:, i-1] = df.iloc[:, i-1].mask(target_mask, '[REDACTED: NAME]')
+
 
         return df
 

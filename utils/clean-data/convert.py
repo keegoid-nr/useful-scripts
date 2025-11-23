@@ -1,5 +1,7 @@
 import pandas as pd
 from bs4 import BeautifulSoup
+from bs4 import MarkupResemblesLocatorWarning
+import warnings
 import sys
 import os
 from pathlib import Path
@@ -15,6 +17,7 @@ def clean_html(text):
     # BeautifulSoup parses the HTML and get_text() extracts the text
     # separator=' ' ensures words don't merge when tags are removed
     try:
+        warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
         soup = BeautifulSoup(str(text), "html.parser")
         text = soup.get_text(separator=" ").strip()
     except Exception as e:
