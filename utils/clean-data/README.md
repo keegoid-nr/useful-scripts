@@ -121,7 +121,8 @@ The output will be saved to a sibling `sanitized_csv` directory by default (e.g.
 | Category | Patterns Redacted |
 |----------|-------------------|
 | **Network** | IPv4, IPv6, MAC Addresses, Container IDs |
-| **PII** | Emails, Phone Numbers, SSNs |
+| **PII** | Emails, Phone Numbers, SSNs, Names in Greetings/Updates |
 | **Financial** | Credit Cards (Luhn Validated), Stripe Keys |
-| **Secrets** | Google API Keys, AWS Keys, Generic `key=value` secrets |
+| **Secrets** | Google API Keys, AWS Keys, Generic `key=value` secrets, License Keys |
+| **Cloud & Env** | New Relic Env Vars (`NEW_RELIC_`, `NRIA_`), Private Location Keys, AWS ARNs, Azure IDs, GCP IDs |
 | **Business** | Common tech company names except for "New Relic" |
