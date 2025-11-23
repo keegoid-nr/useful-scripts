@@ -73,7 +73,7 @@ class RedactionPatterns:
         self.stripe_key = re.compile(r'\b(sk|pk)_(test|live)_[0-9a-zA-Z]{24,}\b')
         
         # 5. Business Logic Targets (Competitors / Products)
-        self.competitors = re.compile(r'(?i)\b(Salesforce|Oracle|SAP|Datadog|Splunk|Dynatrace|AppDynamics)\b', re.IGNORECASE)
+        self.competitors = re.compile(r'(?i)\b(Salesforce|Oracle|SAP|Datadog|Splunk|Dynatrace|AppDynamics|Sumologic|Elastic|Grafana|Zabbix|Nagios|SolarWinds|Microsoft|Google|AWS|Amazon|IBM|Cisco|Intel|AMD|Nvidia|Apple|Meta|Facebook|Netflix|Adobe|Intuit|ServiceNow|Snowflake|Atlassian|Jira|Confluence|Slack|Zoom|Twilio|HPE|HP|Dell|Lenovo|Samsung|Sony|Stripe|PayPal|Square|Visa|Mastercard)\b', re.IGNORECASE)
 
 class RedactionEngine:
     """

@@ -124,4 +124,4 @@ The output will be saved to a sibling `sanitized_csv` directory by default (e.g.
 | **PII** | Emails, Phone Numbers, SSNs |
 | **Financial** | Credit Cards (Luhn Validated), Stripe Keys |
 | **Secrets** | Google API Keys, AWS Keys, Generic `key=value` secrets |
-| **Business** | Competitor names (Salesforce, Datadog, etc.) unless "New Relic" is mentioned |
+| **Business** | Common tech company names except for "New Relic" |
