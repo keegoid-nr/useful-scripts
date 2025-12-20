@@ -1,5 +1,7 @@
 # Watch and Copy Docker Container Logs
 
+![Language](https://img.shields.io/badge/language-Shell%20Script-green.svg)
+
 ## Overview
 
 `watch-and-copy.sh` is a bash script that monitors New Relic Synthetics runtime containers and automatically captures their input/output files before the containers are removed. This is particularly useful for debugging short-lived containers that are launched with the `--rm` flag, which automatically removes them after execution.
