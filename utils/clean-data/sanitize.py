@@ -46,8 +46,21 @@ class RedactionPatterns:
 
         # 2. Personal Identifiable Information (PII)
         self.email = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
-        # International phone format heuristics (E.164-ish or dashed)
-        self.phone = re.compile(r'(?<!\d)\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)')
+        self.url = re.compile(r'(?i)\b(?:https?://|www\.)\S+\b')
+        # International phone format heuristics (Broad matching for +CC ... or US style, or raw +digits)
+        # Revised to handle spaced groups like +41 55 555 55 55
+        self.phone = re.compile(r'(?<![\d#])(?:(?:\+\d{1,3}[\s.-]?)?\(?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}|\+\d{10,15})(?!\d)')
+        self.address = re.compile(r'\b\d{1,5}\s+[A-Za-z0-9\s.,-]+\s+(?:St\.?|Street|Ave\.?|Avenue|Rd\.?|Road|Blvd\.?|Boulevard|Ln\.?|Lane|Dr\.?|Drive|Ct\.?|Court|Pl\.?|Place|Sq\.?|Square|Way|Pkwy\.?|Parkway)(?:\s+(?:Apt|Suite|Unit|#)\s*[\w-]+)?\b', re.IGNORECASE)
+        self.po_box = re.compile(r'(?i)\bP\.?O\.?\s*Box(?:\s+\d+)?\b')
+        # German/Swiss street names often end in strasse/weg/platz followed by number
+        self.address_intl = re.compile(r'(?i)\b[A-Za-zäöüÄÖÜß-]+\s*(?:str\.?|strasse|way|gasse|weg|platz|allee)\s+\d+\w?\b')
+        # Postcode + City (e.g. 9999 Pfäffikon) - simple heuristic
+        self.postcode_city = re.compile(r'\b\d{4,5}\s+[A-ZÄÖÜ][a-zäöüß]+\b')
+        self.country = re.compile(r'(?i)\b(Switzerland|Suisse|Schweiz|Germany|Deutschland|Austria|Österreich|Liechtenstein|France|Italy|Spain|United Kingdom|USA|Canada|Australia|Japan|China)\b')
+        
+        # Company Names with Legal Entity Suffixes (AG, GmbH, etc) - optionally followed by City
+        self.company_header = re.compile(r'\b[A-Z][\w\s&]+?\s+(?:AG|GmbH|SA|S\.A\.|Ltd|Inc|Corp|LLC)\b(?:,?\s+[A-Z][a-zäöü]+)?')
+
         self.ssn = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
         # Greetings (Hi/Hello/Hey Name,) - Case insensitive, preserves whitespace after greeting
         self.greeting_name = re.compile(r'(?i)\b(Hi|Hello|Hey)(\s+)([^\s,<>]+)\s*(?=,)')
@@ -193,13 +206,20 @@ class RedactionEngine:
             df[col] = df[col].str.replace(self.patterns.gcp_id, '[REDACTED: GCP_ID]', regex=True)
 
             # 2. PII & Financial
+            df[col] = df[col].str.replace(self.patterns.url, '[REDACTED: URL]', regex=True)
+            # Apply phone redaction (covers enhanced intl patterns)
             df[col] = df[col].str.replace(self.patterns.phone, '[REDACTED: PHONE]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.address, '[REDACTED: ADDRESS]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.po_box, '[REDACTED: PO_BOX]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.address_intl, '[REDACTED: ADDRESS_INTL]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.postcode_city, '[REDACTED: POSTCODE_CITY]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.country, '[REDACTED: COUNTRY]', regex=True)
+            df[col] = df[col].str.replace(self.patterns.company_header, '[REDACTED: COMPANY]', regex=True)
             df[col] = df[col].str.replace(self.patterns.ssn, '[REDACTED: SSN]', regex=True)
             # Redact names in greetings (Hi Name,)
             df[col] = df[col].str.replace(self.patterns.greeting_name, r'\1\2[REDACTED: NAME]', regex=True)
             # Redact names in support case updates (Your support case has been updated by Name.)
             df[col] = df[col].str.replace(self.patterns.support_update_name, r'\1[REDACTED: NAME]', regex=True)
-            # Redact names in case log patterns (CM-ID,"Date",Name,Type)
             # Redact names in case log patterns (CM-ID,"Date",Name,Type)
             # df[col] = df[col].str.replace(self.patterns.case_log_pattern, r'\1[REDACTED: NAME]\3', regex=True)
             
