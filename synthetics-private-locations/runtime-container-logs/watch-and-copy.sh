@@ -9,7 +9,7 @@ CHECK_INTERVAL=1 # Seconds to wait to ensure file size is stable
 usage() {
     echo "Usage: $0 [-i image_name] [-d destination_path] [-t check_interval_seconds] [-h]"
     echo ""
-    echo "  -i  Docker image name to monitor (default: $IMAGE_NAME)"
+    echo "  -i  Docker image to monitor (e.g. name or name:tag) (default: $IMAGE_NAME)"
     echo "  -d  Destination base directory (default: $DEST_BASE)"
     echo "  -t  Seconds to wait for file stability (default: $CHECK_INTERVAL)"
     echo "  -h  Show this help message"
@@ -45,10 +45,25 @@ do
     
     # Run extraction in the background so we don't miss simultaneous jobs
     (
-        # Extract runtime name from image (e.g., "newrelic/synthetics-node-browser-runtime" -> "synthetics-node-browser-runtime")
+        # Extract runtime name from image (e.g., "newrelic/synthetics-node-browser-runtime:latest" -> "synthetics-node-browser-runtime")
+        # 1. Strip everything before the last slash (registry/repo)
         RUNTIME_NAME="${IMAGE_NAME##*/}"
+        # 2. Strip everything after the colon (tag)
+        RUNTIME_NAME="${RUNTIME_NAME%%:*}"
+
+        # 3. Handle shorthand image names by mapping keywords to canonical runtime names
+        # The internal container path requires the full name (e.g., synthetics-node-browser-runtime)
+        if [[ "$RUNTIME_NAME" == *"browser"* ]]; then
+            RUNTIME_NAME="synthetics-node-browser-runtime"
+        elif [[ "$RUNTIME_NAME" == *"api"* ]]; then
+            RUNTIME_NAME="synthetics-node-api-runtime"
+        fi
+
         INPUT_PATH="/app/${RUNTIME_NAME}/runtime/input-output/input"
         OUTPUT_PATH="/app/${RUNTIME_NAME}/runtime/input-output/output"
+
+        echo "Resolved Runtime: $RUNTIME_NAME"
+        echo "Monitoring paths: $INPUT_PATH and $OUTPUT_PATH"
 
         # Prepare destination immediately
         RUN_ID=$(date +%Y%m%d_%H%M%S)_${CONTAINER_ID:0:6}

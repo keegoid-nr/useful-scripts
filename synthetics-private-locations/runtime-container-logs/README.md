@@ -71,7 +71,7 @@ Customize the script with command-line options:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-i` | Docker image name to monitor | `newrelic/synthetics-node-browser-runtime` |
+| `-i` | Docker image to monitor (name or `name:tag`) | `newrelic/synthetics-node-browser-runtime` |
 | `-d` | Destination base directory for captured files | `./captured_outputs` |
 | `-t` | Seconds to wait for file stability (currently unused in polling) | `1` |
 | `-h` | Show help message and exit | - |
@@ -81,7 +81,7 @@ Customize the script with command-line options:
 **Monitor a different runtime image:**
 
 ```bash
-./watch-and-copy.sh -i newrelic/synthetics-chrome-browser-runtime
+./watch-and-copy.sh -i newrelic/synthetics-chrome-browser-runtime:latest
 ```
 
 **Save to a custom directory:**
@@ -98,19 +98,24 @@ Customize the script with command-line options:
 
 ## How It Works
 
-1. **Event Monitoring**: The script uses `docker events` to listen for container start events matching the specified image name
+1. **Event Monitoring**: The script uses `docker events` to listen for container start events matching the specified image. It handles full image names, tags, and registry prefixes.
 
-2. **Background Processing**: When a container starts, a background job is spawned to monitor it independently, allowing the script to handle multiple containers simultaneously
+2. **Runtime Resolution**: The script automatically extracts the base runtime name from the image and maps keywords to canonical runtimes for internal path resolution:
+    - Images containing **"api"** map to `/app/synthetics-node-api-runtime/...`
+    - Images containing **"browser"** map to `/app/synthetics-node-browser-runtime/...`
+    - This allows using shorthand image names like `node-api-runtime` or `node-browser-runtime`.
 
-3. **Immediate Capture**: The script attempts an initial copy after a 0.05 second delay to catch files written at container startup
+3. **Background Processing**: When a container starts, a background job is spawned to monitor it independently, allowing the script to handle multiple containers simultaneously
 
-4. **Polling Loop**: While the container is running, the script polls every 0.1 seconds to detect file size increases
+4. **Immediate Capture**: The script attempts an initial copy after a 0.05 second delay to catch files written at container startup
 
-5. **Incremental Copying**: Files are copied only when directory sizes increase, avoiding redundant operations
+5. **Polling Loop**: While the container is running, the script polls every 0.1 seconds to detect file size increases
 
-6. **Final Attempt**: After the container stops, the script makes one last attempt to copy any files that were written just before shutdown
+6. **Incremental Copying**: Files are copied only when directory sizes increase, avoiding redundant operations
 
-7. **Archiving**: If files were captured, they're compressed into a `.tar.gz` archive and the uncompressed directory is removed
+7. **Final Attempt**: After the container stops, the script makes one last attempt to copy any files that were written just before shutdown
+
+8. **Archiving**: If files were captured, they're compressed into a `.tar.gz` archive and the uncompressed directory is removed
 
 ## Output Structure
 
@@ -148,6 +153,7 @@ The run ID format is: `YYYYMMDD_HHMMSS_<container_id_prefix>`
 - Verify the container is creating files at the expected paths
 - Check that the script has permission to execute Docker commands
 - Ensure the image name matches exactly (use `docker images` to verify)
+- If using a custom image, ensure the internal path structure matches `/app/<runtime-name>/...`
 
 ### Script exits with "docker: command not found"
 
