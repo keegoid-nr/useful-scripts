@@ -42,9 +42,10 @@ These scripts are intended to be run on the host where the Infrastructure agent 
 #### Optional Arguments
 
 - `-c <count>`: Sets the number of packets `mtr` sends to each New Relic endpoint. The default is `20`.
+- `-p <proxy_url>`: Specifies an HTTP proxy server (e.g., `http://proxy.example.com:8080`) to use for `curl` requests. Note that `mtr` traffic will not use the proxy.
 
     ```sh
-    sudo ./infra-network-diag.sh -c 50
+    sudo ./infra-network-diag.sh -c 50 -p "http://your-proxy:3128"
     ```
 
 ### Windows
@@ -61,9 +62,10 @@ These scripts are intended to be run on the host where the Infrastructure agent 
 #### Optional Arguments
 
 - `-PathpingCount <count>`: Sets the number of pings `pathping` sends to each New Relic endpoint. The default is `20`.
+- `-Proxy <proxy_url>`: Specifies an HTTP proxy server (e.g., `http://proxy.example.com:8080`) to use for `curl` requests. Note that `pathping` and `Test-NetConnection` will not use the proxy.
 
     ```powershell
-    .\infra-network-diag.ps1 -PathpingCount 50
+    .\infra-network-diag.ps1 -PathpingCount 50 -Proxy "http://your-proxy:3128"
     ```
 
 ## Output

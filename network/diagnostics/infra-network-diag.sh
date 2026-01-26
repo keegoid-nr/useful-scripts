@@ -29,8 +29,9 @@ License: Apache License 2.0
 
 # Displays usage information and exits.
 usage() {
-    echo "Usage: sudo $0 [-c <count>]"
+    echo "Usage: sudo $0 [-c <count>] [-p <proxy_url>]"
     echo "  -c <count>: Optional. Number of packets for mtr to send (default: 20)."
+    echo "  -p <proxy_url>: Optional. Proxy server URL (e.g., http://proxy.example.com:8080)."
     exit 1
 }
 
@@ -114,8 +115,8 @@ echo "✅ Using '${DNS_TOOL}' for DNS lookups."
 # Default number of packets for MTR to send in each trace.
 MTR_PACKET_COUNT=20
 
-# Parse command-line flags (e.g., -c for packet count).
-while getopts ":c:h" opt; do
+# Parse command-line flags (e.g., -c for packet count, -p for proxy).
+while getopts ":c:p:h" opt; do
   case ${opt} in
     c )
       # Validate that the argument for -c is a positive integer.
@@ -125,6 +126,9 @@ while getopts ":c:h" opt; do
         echo "❌ Error: Invalid packet count provided for -c. Must be a positive integer." >&2
         usage
       fi
+      ;;
+    p )
+      PROXY_URL=${OPTARG}
       ;;
     h )
       usage
@@ -158,6 +162,11 @@ OUTPUT_DIR="infra-network-diag_${TIMESTAMP}"
 mkdir -p "${OUTPUT_DIR}"
 echo "✅ All outputs will be saved in the ./${OUTPUT_DIR}/ directory."
 echo "✅ Using mtr packet count of ${MTR_PACKET_COUNT}."
+if [ -n "$PROXY_URL" ]; then
+  echo "✅ Proxy configuration detected: $PROXY_URL"
+else
+  echo "✅ No proxy configured."
+fi
 echo "------------------------------------------------------------"
 
 
@@ -179,6 +188,39 @@ fi
 if command -v systemd-resolve &> /dev/null; then
   systemd-resolve --status > "${OUTPUT_DIR}/systemd-resolve_status.txt"
 fi
+if [ -n "$PROXY_URL" ]; then
+  echo "🔎 Checking connectivity to proxy..."
+  # Use curl to check if the proxy itself is reachable.
+  # We use -I (HEAD) and -m (max time) for a quick check.
+  # We target the proxy URL itself or a known reliable site through it?
+  # Usually checking the proxy port open is enough.
+  
+  # Extract host and port from PROXY_URL
+  # Assuming format http://host:port or host:port
+  # This simple extraction might be fragile but works for standard inputs.
+  PROXY_HOST=$(echo $PROXY_URL | sed -E 's/https?:\/\///' | cut -d: -f1)
+  PROXY_PORT=$(echo $PROXY_URL | sed -E 's/https?:\/\///' | cut -d: -f2 | sed 's/[^0-9]//g')
+  
+  if [ -z "$PROXY_PORT" ]; then PROXY_PORT=8080; fi # Default guess if parsing fails, mostly for log
+  
+  proxy_check_file="${OUTPUT_DIR}/proxy_connectivity.txt"
+  echo "Testing connection to proxy $PROXY_HOST on port $PROXY_PORT..." > "$proxy_check_file"
+  
+  if command -v nc &>/dev/null && timeout 5 nc -vz "$PROXY_HOST" "$PROXY_PORT" &>> "$proxy_check_file"; then
+      echo "Proxy reachable via nc." >> "$proxy_check_file"
+      echo "✅ Proxy reachable."
+  else
+      echo "⚠️  Proxy check via nc failed. Trying direct curl to proxy..." >> "$proxy_check_file"
+      # Just try to fetch the proxy root or a site through it.
+      if curl -x "$PROXY_URL" -I "https://www.google.com" -m 5 &>> "$proxy_check_file"; then
+          echo "Proxy working via curl check." >> "$proxy_check_file"
+          echo "✅ Proxy working."
+      else
+          echo "❌ Proxy check failed. Diagnostics may fail if proxy is required."
+          echo "❌ Proxy check failed." >> "$proxy_check_file"
+      fi
+  fi
+fi
 echo "------------------------------------------------------------"
 
 
@@ -198,10 +240,16 @@ for endpoint in "${ENDPOINTS[@]}"; do
       nslookup) nslookup "${endpoint}" > "${dns_lookup_file}" ;;
   esac
   echo -e "\n--- Running verbose curl for ${endpoint}/cdn-cgi/trace ---" &> "${OUTPUT_DIR}/curl_${endpoint}.txt"
-  curl -v "https://${endpoint}/cdn-cgi/trace" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+  
+  CURL_ARGS="-v"
+  if [ -n "$PROXY_URL" ]; then
+      CURL_ARGS="$CURL_ARGS -x $PROXY_URL"
+  fi
+  
+  curl $CURL_ARGS "https://${endpoint}/cdn-cgi/trace" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
   if [ "$endpoint" != "infrastructure-command-api.newrelic.com" ]; then
     echo -e "\n\n--- Running verbose curl for ${endpoint}/worker/health ---" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
-    curl -v "https://${endpoint}/worker/health" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
+    curl $CURL_ARGS "https://${endpoint}/worker/health" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
   fi
 
   # Check raw TCP connectivity to port 443.

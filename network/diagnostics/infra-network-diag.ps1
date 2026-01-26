@@ -10,20 +10,22 @@
 # License: Apache License 2.0
 
 
+# Parse command-line options
+param (
+    [int]$PathpingCount = 20,
+    [string]$Proxy,
+    [switch]$Help
+)
+
 # --- Section 0: Prerequisite Checks ---
 
 # Help/Usage function
 function Show-Usage {
-    Write-Host "Usage: .\infra-network-diag.ps1 [-PathpingCount <count>]"
+    Write-Host "Usage: .\infra-network-diag.ps1 [-PathpingCount <count>] [-Proxy <proxy_url>]"
     Write-Host "  -PathpingCount <count>: Optional. Number of pings for pathping to send (default: 20)."
+    Write-Host "  -Proxy <proxy_url>    : Optional. Proxy server URL (e.g., http://proxy.example.com:8080)."
     exit 1
 }
-
-# Parse command-line options
-param (
-    [int]$PathpingCount = 20,
-    [switch]$Help
-)
 
 if ($Help) {
     Show-Usage
@@ -76,6 +78,31 @@ Get-NetIPConfiguration | Format-List | Out-File -FilePath "${OUTPUT_DIR}\net_ip_
 Write-Host "------------------------------------------------------------"
 
 
+# --- Section 2b: Proxy Configuration ---
+if ($Proxy) {
+    Write-Host "Proxy configuration detected: $Proxy"
+    Write-Host "Checking connectivity to proxy..."
+    
+    # Simple check to see if we can reach the proxy host/port
+    try {
+        $uri = [System.Uri]$Proxy
+        $proxyHost = $uri.Host
+        $proxyPort = $uri.Port
+        if ($proxyPort -eq -1) { $proxyPort = 80 } # Default if not specified, though Uri usually handles it
+
+        Test-NetConnection -ComputerName $proxyHost -Port $proxyPort | Format-List | Out-File -FilePath "${OUTPUT_DIR}\proxy_connectivity.txt"
+        Write-Host "Proxy connectivity check saved to ${OUTPUT_DIR}\proxy_connectivity.txt"
+    }
+    catch {
+        Write-Warning "Could not parse proxy URL or connect to proxy: $_"
+        "Proxy connectivity check failed: $_" | Out-File -FilePath "${OUTPUT_DIR}\proxy_connectivity_error.txt"
+    }
+} else {
+    Write-Host "No proxy configured."
+}
+Write-Host "------------------------------------------------------------"
+
+
 # --- Section 3: Network Tests for New Relic Endpoints ---
 Write-Host "Running network tests for New Relic endpoints..."
 foreach ($endpoint in $ENDPOINTS) {
@@ -84,7 +111,13 @@ foreach ($endpoint in $ENDPOINTS) {
   # DNS Lookup and Curl
   Write-Host "[*] Running DNS lookup and curl for ${endpoint}"
   Resolve-DnsName -Name $endpoint | Out-File -FilePath "${OUTPUT_DIR}\dns_lookup_${endpoint}.txt"
-  curl.exe -v "https://${endpoint}/cdn-cgi/trace" 2>&1 | Out-File -FilePath "${OUTPUT_DIR}\curl_${endpoint}.txt"
+  
+  $curlArgs = "-v", "https://${endpoint}/cdn-cgi/trace"
+  if ($Proxy) {
+      $curlArgs += "--proxy", "$Proxy"
+  }
+  # Capture both stdout and stderr (2>&1)
+  & curl.exe $curlArgs 2>&1 | Out-File -FilePath "${OUTPUT_DIR}\curl_${endpoint}.txt"
 
   # Port check
   Write-Host "[*] Checking port connectivity to ${endpoint}:443"
