@@ -16,14 +16,14 @@ security scanning purposes.
 Usage:
   ./helm-image-inspector.sh <REPO>/<CHART> [VERSION] [helm-flags]
   ./helm-image-inspector.sh --local
-  ./helm-image-inspector.sh --newrelic
+  ./helm-image-inspector.sh --newrelic [VERSION]
 
 Arguments:
   <REPO>/<CHART> (Repo Mode): The name of the chart to inspect (e.g., `newrelic/nri-bundle`).
   [VERSION] (Repo Mode, Optional): The specific chart version to inspect.
   [helm-flags] (Optional): Pass-through flags for `helm template`, like `--set key=value`.
   --local: Switch to local mode to inspect a deployed Helm release.
-  --newrelic: Use interactive mode for New Relic charts.
+  --newrelic: Use interactive mode for New Relic charts. Optionally specify a version.
 
 Author : Keegan Mullaney
 Company: New Relic
@@ -118,6 +118,7 @@ inspect_from_repo() {
             cat "$search_output_file" >&2
             exit 1
         fi
+        log "Inspecting the latest version of '$repo_chart' ($latest_version)..."
         version_flag="--version $latest_version"
     fi
 
@@ -191,9 +192,15 @@ inspect_from_local() {
 
 # New: Interactive mode for New Relic charts.
 inspect_newrelic_interactive() {
+    local version="$1"
     log "New Relic Interactive Mode"
     local chart_to_inspect; chart_to_inspect=$(select_newrelic_chart)
     if [ -z "$chart_to_inspect" ]; then echo "No chart selected. Exiting." >&2; exit 1; fi
+    
+    if [ -z "$version" ]; then
+        version=$(select_chart_version "$chart_to_inspect")
+        if [ -z "$version" ]; then echo "No version selected. Exiting." >&2; exit 1; fi
+    fi
 
     local preset_flags; preset_flags=($(get_preset_flags_from_file "$chart_to_inspect"))
 
@@ -203,59 +210,8 @@ inspect_newrelic_interactive() {
         exit 1
     fi
 
-    # Special handling for charts that have moved to their own repos.
-    if [[ "$chart_to_inspect" == "newrelic/newrelic-infra-operator" ]]; then
-        local temp_repo_name="temp-infra-operator-repo"
-        local temp_repo_url="https://newrelic.github.io/newrelic-infra-operator"
-
-        trap 'helm repo remove "$temp_repo_name" &>/dev/null; rm -rf "$WORK_DIR"' EXIT
-
-        helm repo add "$temp_repo_name" "$temp_repo_url" >/dev/null 2>&1
-        inspect_from_repo "$temp_repo_name/newrelic-infra-operator" "" "${preset_flags[@]}"
-    elif [[ "$chart_to_inspect" == "newrelic/newrelic-infrastructure" ]]; then
-        local temp_repo_name="temp-infra-repo"
-        local temp_repo_url="https://newrelic.github.io/nri-kubernetes"
-
-        trap 'helm repo remove "$temp_repo_name" &>/dev/null; rm -rf "$WORK_DIR"' EXIT
-
-        helm repo add "$temp_repo_name" "$temp_repo_url" >/dev/null 2>&1
-        inspect_from_repo "$temp_repo_name/newrelic-infrastructure" "" "${preset_flags[@]}"
-    elif [[ "$chart_to_inspect" == "newrelic/newrelic-k8s-metrics-adapter" ]]; then
-        local temp_repo_name="temp-metrics-adapter-repo"
-        local temp_repo_url="https://newrelic.github.io/newrelic-k8s-metrics-adapter"
-
-        trap 'helm repo remove "$temp_repo_name" &>/dev/null; rm -rf "$WORK_DIR"' EXIT
-
-        helm repo add "$temp_repo_name" "$temp_repo_url" >/dev/null 2>&1
-        inspect_from_repo "$temp_repo_name/newrelic-k8s-metrics-adapter" "" "${preset_flags[@]}"
-    elif [[ "$chart_to_inspect" == "newrelic/nri-kube-events" ]]; then
-        local temp_repo_name="temp-kube-events-repo"
-        local temp_repo_url="https://newrelic.github.io/nri-kube-events"
-
-        trap 'helm repo remove "$temp_repo_name" &>/dev/null; rm -rf "$WORK_DIR"' EXIT
-
-        helm repo add "$temp_repo_name" "$temp_repo_url" >/dev/null 2>&1
-        inspect_from_repo "$temp_repo_name/nri-kube-events" "" "${preset_flags[@]}"
-    elif [[ "$chart_to_inspect" == "newrelic/nri-metadata-injection" ]]; then
-        local temp_repo_name="temp-metadata-injection-repo"
-        local temp_repo_url="https://newrelic.github.io/k8s-metadata-injection"
-
-        trap 'helm repo remove "$temp_repo_name" &>/dev/null; rm -rf "$WORK_DIR"' EXIT
-
-        helm repo add "$temp_repo_name" "$temp_repo_url" >/dev/null 2>&1
-        inspect_from_repo "$temp_repo_name/nri-metadata-injection" "" "${preset_flags[@]}"
-    elif [[ "$chart_to_inspect" == "newrelic/nri-prometheus" ]]; then
-        local temp_repo_name="temp-prometheus-repo"
-        local temp_repo_url="https://newrelic.github.io/nri-prometheus"
-
-        trap 'helm repo remove "$temp_repo_name" &>/dev/null; rm -rf "$WORK_DIR"' EXIT
-
-        helm repo add "$temp_repo_name" "$temp_repo_url" >/dev/null 2>&1
-        inspect_from_repo "$temp_repo_name/nri-prometheus" "" "${preset_flags[@]}"
-    else
-        # Standard logic for charts in the main 'newrelic' repo.
-        inspect_from_repo "$chart_to_inspect" "" "${preset_flags[@]}"
-    fi
+    # Standard logic for charts in the main 'newrelic' repo.
+    inspect_from_repo "$chart_to_inspect" "$version" "${preset_flags[@]}"
 }
 
 # Displays a list of Helm releases and prompts the user to select one.
@@ -299,6 +255,36 @@ select_newrelic_chart() {
     fi
 }
 
+# New: Displays a list of versions for a selected chart.
+select_chart_version() {
+    local chart="$1"
+    echo "Fetching versions for '$chart'..." >&2
+    versions_json=$(helm search repo "$chart" --versions -o json)
+    if [ -z "$versions_json" ] || [ "$versions_json" == "[]" ]; then
+         echo -e "${RED}No versions found for '$chart'.${RESET}" >&2; return 1;
+    fi
+
+    # Extract versions (limiting to top 15 to avoid clutter)
+    versions=(); while IFS= read -r line; do versions+=("$line"); done < <(echo "$versions_json" | jq -r '.[].version' | head -n 15)
+    
+    echo -e "${BOLD}Please select a version for '$chart':${RESET}" >&2
+    
+    pk=1
+    for i in "${!versions[@]}"; do 
+        local label=""
+        if [ "$i" -eq 0 ]; then label=" (Latest)"; fi
+        printf "  ${BOLD}%2d)${RESET} %s%s\n" "$pk" "${versions[$i]}" "$label" >&2
+        pk=$((pk+1))
+    done
+    
+    local choice; printf "\n${CYAN}Enter number: ${RESET}" >&2; read -r choice
+    if [[ $choice =~ ^[0-9]+$ ]] && [ "$choice" -gt 0 ] && [ "$choice" -le "${#versions[@]}" ]; then
+        echo "${versions[$((choice-1))]}"; 
+    else
+        echo -e "${RED}Invalid selection.${RESET}" >&2; return 1; 
+    fi
+}
+
 # New: Reads preset flags from an external file.
 get_preset_flags_from_file() {
     local chart_name="$1"
@@ -324,8 +310,19 @@ parse_template_output() {
           split(versions, pairs, "§"); for (i in pairs) { if (pairs[i] != "") { split(pairs[i], kv, "|"); chart_versions[kv[1]] = kv[2] } }
       }
       /^# Source: / {
-          split($3, path_parts, "/");
-          if (path_parts[2] == "charts") { current_chart = path_parts[3]; } else { current_chart = "parent-chart"; }
+          full_path = $3
+          split(full_path, path_parts, "/")
+          current_chart = ""
+          for (i = 1; i < length(path_parts); i++) {
+              if (path_parts[i] == "charts") {
+                  if (current_chart == "") {
+                      current_chart = path_parts[i+1]
+                  } else {
+                      current_chart = current_chart "/" path_parts[i+1]
+                  }
+              }
+          }
+          if (current_chart == "") { current_chart = "parent-chart" }
       }
       /^[ \t]+image:/ {
           gsub(/"|\047/, "", $2); image_full = $2;
@@ -344,7 +341,7 @@ parse_template_output() {
               if (version == "" && display_chart == "pixie-chart") {
                   version = chart_versions["pixie-operator-chart"]
               }
-              version_str = (version != "") ? " (v" c_version version c_reset ")" : "";
+              version_str = (version != "") ? " (" c_version version c_reset ")" : "";
               print c_chart display_chart c_reset version_str ":"; print images[chart];
           }
       }'
@@ -378,7 +375,7 @@ parse_manifest_output() {
       END {
           PROCINFO["sorted_in"] = "@ind_str_asc";
           for (chart in images) {
-              version_str = chart_versions[chart] ? " (v" c_version chart_versions[chart] c_reset ")" : "";
+              version_str = chart_versions[chart] ? " (" c_version chart_versions[chart] c_reset ")" : "";
               print c_chart chart c_reset version_str ":"; print images[chart];
           }
       }'
@@ -406,27 +403,29 @@ main() {
         shift
     fi
 
-    for arg in "$@"; do
-        if [[ "$arg" == "--local" ]]; then
-            if [ "$#" -ne 1 ]; then
-                echo -e "${RED}Error: The --local flag must be used alone.${RESET}" >&2; exit 1
-            fi
-            inspect_from_local
-            return
-        fi
-        if [[ "$arg" == "--newrelic" ]]; then
-            if [ "$#" -ne 1 ]; then
-                echo -e "${RED}Error: The --newrelic flag must be used alone.${RESET}" >&2; exit 1
-            fi
-            inspect_newrelic_interactive
-            return
-        fi
-    done
-
     if [ "$#" -eq 0 ]; then
         echo -e "${RED}Invalid usage.${RESET}" >&2
-        echo "Usage: $0 <REPO>/<CHART> [VERSION] [helm-flags] | --local | --newrelic" >&2
+        echo "Usage: $0 <REPO>/<CHART> [VERSION] [helm-flags] | --local | --newrelic [VERSION]" >&2
         exit 1
+    fi
+
+    if [[ "$1" == "--local" ]]; then
+        if [ "$#" -ne 1 ]; then
+            echo -e "${RED}Error: The --local flag must be used alone.${RESET}" >&2; exit 1
+        fi
+        inspect_from_local
+        return
+    fi
+    
+    if [[ "$1" == "--newrelic" ]]; then
+        local version=""
+        if [ "$#" -eq 2 ]; then
+             version="$2"
+        elif [ "$#" -gt 2 ]; then
+             echo -e "${RED}Error: --newrelic accepts at most one argument (version).${RESET}" >&2; exit 1
+        fi
+        inspect_newrelic_interactive "$version"
+        return
     fi
 
     if ! [[ "$1" =~ .*/.* ]]; then
