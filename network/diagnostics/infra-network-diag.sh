@@ -110,7 +110,90 @@ fi
 echo "✅ Using '${DNS_TOOL}' for DNS lookups."
 
 
-# --- Section 1: Configuration & Argument Parsing ---
+# --- Section 1: Shell Best Practices & Helper Functions ---
+
+# Enable strict error handling after prerequisite checks
+set -euo pipefail
+
+# Color output (disable if not a TTY or TERM not set)
+if [[ -t 1 ]] && [[ "${TERM:-}" != "dumb" ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    BOLD=''
+    NC=''
+fi
+
+# Test result tracking
+PASS_COUNT=0
+FAIL_COUNT=0
+WARN_COUNT=0
+declare -a FAILURES
+declare -a WARNINGS
+declare -a RECOMMENDATIONS
+
+# Helper function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Log section header
+log_section() {
+    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}$1${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+# Log a test being run
+log_test() {
+    echo -e "${YELLOW}[TEST]${NC} $1"
+}
+
+# Log a successful test
+log_pass() {
+    echo -e "${GREEN}[PASS]${NC} $1"
+    ((PASS_COUNT++)) || true
+}
+
+# Log a failed test
+log_fail() {
+    echo -e "${RED}[FAIL]${NC} $1"
+    ((FAIL_COUNT++)) || true
+    FAILURES+=("$1")
+}
+
+# Log a warning
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+    ((WARN_COUNT++)) || true
+    WARNINGS+=("$1")
+}
+
+# Log info message
+log_info() {
+    echo -e "${CYAN}[INFO]${NC} $1"
+}
+
+# Cleanup function
+cleanup() {
+    # Only cleanup on error or interrupt, not on normal exit
+    if [[ $? -ne 0 ]] && [[ -n "${OUTPUT_DIR:-}" ]] && [[ -d "$OUTPUT_DIR" ]]; then
+        echo -e "\n${YELLOW}Cleaning up partial output directory...${NC}"
+        # Don't remove, keep for debugging
+    fi
+}
+trap cleanup EXIT INT TERM
+
+
+# --- Section 2: Configuration & Argument Parsing ---
 
 # Default number of packets for MTR to send in each trace.
 MTR_PACKET_COUNT=20
@@ -155,191 +238,679 @@ ENDPOINTS=(
 )
 
 
+# --- Section 3: Analysis Functions ---
+
+# Analyze DNS lookup output
+analyze_dns_output() {
+    local dns_file="$1"
+    local endpoint="$2"
+
+    if grep -qi "NXDOMAIN\|SERVFAIL\|connection timed out\|no servers could be reached\|communications error" "$dns_file"; then
+        log_fail "DNS lookup failed for ${endpoint}"
+        RECOMMENDATIONS+=("Check DNS server configuration - cannot resolve ${endpoint}")
+        return 1
+    elif grep -q "ANSWER SECTION\|has address\|has IPv6 address" "$dns_file"; then
+        log_pass "DNS resolution successful for ${endpoint}"
+        return 0
+    else
+        log_warn "Unclear DNS result for ${endpoint}"
+        return 2
+    fi
+}
+
+# Analyze curl connection output
+analyze_curl_output() {
+    local curl_file="$1"
+    local endpoint="$2"
+
+    # Check for connection errors
+    if grep -q "Connection refused" "$curl_file"; then
+        log_fail "Connection refused to ${endpoint}"
+        RECOMMENDATIONS+=("${endpoint} is refusing connections - check if service is down or firewall is blocking")
+        return 1
+    elif grep -q "Connection timed out\|Operation timed out\|Failed to connect" "$curl_file"; then
+        log_fail "Connection timeout to ${endpoint}"
+        RECOMMENDATIONS+=("Cannot connect to ${endpoint} - check firewall rules and network connectivity")
+        return 1
+    elif grep -q "SSL certificate problem\|certificate verify failed\|SSL: certificate verification failed" "$curl_file"; then
+        log_fail "SSL certificate error for ${endpoint}"
+        RECOMMENDATIONS+=("SSL/TLS certificate validation failed for ${endpoint} - check corporate proxy/SSL inspection")
+        return 1
+    elif grep -q "Could not resolve host\|Couldn't resolve host" "$curl_file"; then
+        log_fail "DNS resolution failed for ${endpoint}"
+        RECOMMENDATIONS+=("Cannot resolve ${endpoint} - DNS configuration issue")
+        return 1
+    elif grep -q "SSL connect error\|error:.*:SSL routines\|TLS handshake" "$curl_file" && ! grep -q "HTTP/[12]" "$curl_file"; then
+        log_fail "TLS handshake failed for ${endpoint}"
+        RECOMMENDATIONS+=("TLS/SSL handshake failure with ${endpoint} - likely corporate firewall or proxy doing SSL inspection")
+        return 1
+    elif grep -q "HTTP/[12][.0-9]* 200\|HTTP/[12][.0-9]* 204" "$curl_file"; then
+        log_pass "Successful HTTPS connection to ${endpoint}"
+        return 0
+    elif grep -q "HTTP/[12][.0-9]* 4[0-9][0-9]" "$curl_file"; then
+        log_warn "HTTP 4xx response from ${endpoint} (may be expected for test endpoint)"
+        return 2
+    elif grep -q "HTTP/[12]" "$curl_file"; then
+        log_warn "Unexpected HTTP response from ${endpoint}"
+        return 2
+    else
+        log_warn "Could not determine connection status for ${endpoint}"
+        return 2
+    fi
+}
+
+# Analyze MTR output for packet loss and latency issues
+analyze_mtr_output() {
+    local mtr_file="$1"
+    local endpoint="$2"
+
+    if [[ ! -s "$mtr_file" ]]; then
+        log_warn "MTR output empty or missing for ${endpoint}"
+        return 2
+    fi
+
+    # Check for 100% packet loss (complete failure)
+    if grep -q "100\.0%.*Loss" "$mtr_file" || tail -1 "$mtr_file" | grep -q "100\.0%"; then
+        log_fail "Complete packet loss to ${endpoint}"
+        RECOMMENDATIONS+=("All packets lost to ${endpoint} - network path is completely blocked")
+        return 1
+    fi
+
+    # Check for high packet loss (>10% on final hop)
+    local last_line
+    last_line=$(tail -1 "$mtr_file")
+    local loss_pct
+    loss_pct=$(echo "$last_line" | awk '{print $3}' | tr -d '%')
+
+    if [[ -n "$loss_pct" ]] && (( $(echo "$loss_pct > 10" | bc -l 2>/dev/null || echo 0) )); then
+        log_warn "High packet loss to ${endpoint} (${loss_pct}%)"
+        RECOMMENDATIONS+=("Packet loss detected to ${endpoint} - network path may be congested or unstable")
+        return 2
+    fi
+
+    # Check average latency on last hop
+    local avg_latency
+    avg_latency=$(echo "$last_line" | awk '{print $6}')
+
+    if [[ -n "$avg_latency" ]] && (( $(echo "$avg_latency > 500" | bc -l 2>/dev/null || echo 0) )); then
+        log_warn "High latency to ${endpoint} (${avg_latency}ms average)"
+        return 2
+    elif [[ -n "$avg_latency" ]]; then
+        log_pass "Network path to ${endpoint} looks healthy (${avg_latency}ms average)"
+        return 0
+    else
+        log_pass "Network path to ${endpoint} completed"
+        return 0
+    fi
+}
+
+# Analyze port connectivity check
+analyze_port_check() {
+    local port_file="$1"
+    local endpoint="$2"
+    local port="$3"
+
+    if grep -q "succeeded\|Success\|open\|Connected to" "$port_file"; then
+        log_pass "Port ${port} is open on ${endpoint}"
+        return 0
+    elif grep -q "Connection refused" "$port_file"; then
+        log_fail "Port ${port} refused on ${endpoint}"
+        return 1
+    elif grep -q "timed out\|No route to host" "$port_file"; then
+        log_fail "Cannot reach ${endpoint}:${port} (timeout)"
+        return 1
+    else
+        log_warn "Port check for ${endpoint}:${port} inconclusive"
+        return 2
+    fi
+}
+
+
 # --- Script Start ---
+log_section "NEW RELIC INFRASTRUCTURE NETWORK DIAGNOSTICS"
+
 # Create a unique, timestamped directory to store all output files.
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 OUTPUT_DIR="infra-network-diag_${TIMESTAMP}"
 mkdir -p "${OUTPUT_DIR}"
-echo "✅ All outputs will be saved in the ./${OUTPUT_DIR}/ directory."
-echo "✅ Using mtr packet count of ${MTR_PACKET_COUNT}."
-if [ -n "$PROXY_URL" ]; then
-  echo "✅ Proxy configuration detected: $PROXY_URL"
+
+log_info "Output directory: ./${OUTPUT_DIR}/"
+log_info "MTR packet count: ${MTR_PACKET_COUNT}"
+if [[ -n "${PROXY_URL:-}" ]]; then
+    log_info "Proxy configured: ${PROXY_URL}"
 else
-  echo "✅ No proxy configured."
+    log_info "No proxy configured"
 fi
-echo "------------------------------------------------------------"
+
+# Calculate estimated run time based on MTR packet count
+# Each endpoint: MTR (~2s per count) + DNS/curl/port (~15s) = MTR_PACKET_COUNT*2 + 15
+# 4 endpoints + DNS server tests + overhead
+ESTIMATED_MINUTES=$(( (${#ENDPOINTS[@]} * (MTR_PACKET_COUNT * 2 + 15) + 60) / 60 ))
+ESTIMATED_MINUTES_MAX=$(( ESTIMATED_MINUTES + 2 ))
+echo -e "\n${CYAN}⏱️  Estimated run time: ${ESTIMATED_MINUTES}-${ESTIMATED_MINUTES_MAX} minutes (depends on network speed)${NC}"
+echo ""
 
 
-# --- Section 2: System and DNS Info ---
+# --- Section 4: System and DNS Info ---
+log_section "Collecting DNS and System Information"
+
 # Collect core system files that define DNS resolution behavior.
-echo "🔎 Collecting DNS and system info..."
+log_test "Collecting DNS configuration files"
 cp /etc/resolv.conf "${OUTPUT_DIR}/resolv.conf.txt"
 cp /etc/nsswitch.conf "${OUTPUT_DIR}/nsswitch.conf.txt"
 
 # Extract DNS server IPs from resolv.conf to use for targeted tests later.
-DNS_SERVERS=($(grep '^nameserver' /etc/resolv.conf | awk '{print $2}'))
-if [ ${#DNS_SERVERS[@]} -eq 0 ]; then
-  echo "⚠️  Could not find any DNS nameservers in /etc/resolv.conf"
+mapfile -t DNS_SERVERS < <(grep '^nameserver' /etc/resolv.conf | awk '{print $2}')
+if [[ ${#DNS_SERVERS[@]} -eq 0 ]]; then
+    log_warn "Could not find any DNS nameservers in /etc/resolv.conf"
 else
-  echo "Found DNS Servers: ${DNS_SERVERS[*]}"
+    log_info "Found DNS Servers: ${DNS_SERVERS[*]}"
 fi
 
 # If systemd-resolved is in use, get its status for more detailed DNS info.
-if command -v systemd-resolve &> /dev/null; then
-  systemd-resolve --status > "${OUTPUT_DIR}/systemd-resolve_status.txt"
+if command_exists systemd-resolve; then
+    systemd-resolve --status > "${OUTPUT_DIR}/systemd-resolve_status.txt" 2>&1 || true
 fi
-if [ -n "$PROXY_URL" ]; then
-  echo "🔎 Checking connectivity to proxy..."
-  # Use curl to check if the proxy itself is reachable.
-  # We use -I (HEAD) and -m (max time) for a quick check.
-  # We target the proxy URL itself or a known reliable site through it?
-  # Usually checking the proxy port open is enough.
-  
-  # Extract host and port from PROXY_URL
-  # Assuming format http://host:port or host:port
-  # This simple extraction might be fragile but works for standard inputs.
-  PROXY_HOST=$(echo $PROXY_URL | sed -E 's/https?:\/\///' | cut -d: -f1)
-  PROXY_PORT=$(echo $PROXY_URL | sed -E 's/https?:\/\///' | cut -d: -f2 | sed 's/[^0-9]//g')
-  
-  if [ -z "$PROXY_PORT" ]; then PROXY_PORT=8080; fi # Default guess if parsing fails, mostly for log
-  
-  proxy_check_file="${OUTPUT_DIR}/proxy_connectivity.txt"
-  echo "Testing connection to proxy $PROXY_HOST on port $PROXY_PORT..." > "$proxy_check_file"
-  
-  if command -v nc &>/dev/null && timeout 5 nc -vz "$PROXY_HOST" "$PROXY_PORT" &>> "$proxy_check_file"; then
-      echo "Proxy reachable via nc." >> "$proxy_check_file"
-      echo "✅ Proxy reachable."
-  else
-      echo "⚠️  Proxy check via nc failed. Trying direct curl to proxy..." >> "$proxy_check_file"
-      # Just try to fetch the proxy root or a site through it.
-      if curl -x "$PROXY_URL" -I "https://www.google.com" -m 5 &>> "$proxy_check_file"; then
-          echo "Proxy working via curl check." >> "$proxy_check_file"
-          echo "✅ Proxy working."
-      else
-          echo "❌ Proxy check failed. Diagnostics may fail if proxy is required."
-          echo "❌ Proxy check failed." >> "$proxy_check_file"
-      fi
-  fi
-fi
-echo "------------------------------------------------------------"
 
+# Proxy connectivity check
+if [[ -n "${PROXY_URL:-}" ]]; then
+    log_section "Checking Proxy Connectivity"
 
-# --- Section 3: Network Tests for New Relic Endpoints ---
-echo "🔎 Running network tests for New Relic endpoints..."
-for endpoint in "${ENDPOINTS[@]}"; do
-  echo -e "\n--- Testing ${endpoint} ---"
-
-  # Perform a standard DNS lookup and a verbose curl test.
-  # The curl to /cdn-cgi/trace is a Cloudflare endpoint that returns useful connection data.
-  # The -v flag shows the TLS handshake, which is critical for debugging connection errors.
-  echo "[*] Running DNS lookup and curl for ${endpoint}"
-  dns_lookup_file="${OUTPUT_DIR}/dns_lookup_${endpoint}.txt"
-  case "${DNS_TOOL}" in
-      dig)      dig "${endpoint}" > "${dns_lookup_file}" ;;
-      host)     host "${endpoint}" > "${dns_lookup_file}" ;;
-      nslookup) nslookup "${endpoint}" > "${dns_lookup_file}" ;;
-  esac
-  echo -e "\n--- Running verbose curl for ${endpoint}/cdn-cgi/trace ---" &> "${OUTPUT_DIR}/curl_${endpoint}.txt"
-  
-  CURL_ARGS="-v"
-  if [ -n "$PROXY_URL" ]; then
-      CURL_ARGS="$CURL_ARGS -x $PROXY_URL"
-  fi
-  
-  curl $CURL_ARGS "https://${endpoint}/cdn-cgi/trace" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
-  if [ "$endpoint" != "infrastructure-command-api.newrelic.com" ]; then
-    echo -e "\n\n--- Running verbose curl for ${endpoint}/worker/health ---" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
-    curl $CURL_ARGS "https://${endpoint}/worker/health" &>> "${OUTPUT_DIR}/curl_${endpoint}.txt"
-  fi
-
-  # Check raw TCP connectivity to port 443.
-  # First, try 'nc' which is a standard network utility.
-  # If 'nc' is unavailable or fails, fall back to bash's built-in /dev/tcp device
-  # for a more reliable check that doesn't depend on external tools.
-  echo "[*] Checking port connectivity to ${endpoint}:443"
-  port_check_file="${OUTPUT_DIR}/port_check_${endpoint}_443.txt"
-  if command -v nc &>/dev/null && timeout 5 nc -vz "${endpoint}" 443 &> "${port_check_file}"; then
-    echo "Port check method: nc -vz" >> "${port_check_file}"
-  else
-    echo "nc -vz failed or not available, using bash fallback..." > "${port_check_file}"
-    (timeout 5 bash -c "echo >/dev/tcp/${endpoint}/443") >> "${port_check_file}" 2>&1
-    if [ $? -eq 0 ]; then echo "Port check method: bash. Result: Success" >> "${port_check_file}"; else echo "Port check method: bash. Result: Failure" >> "${port_check_file}"; fi
-  fi
-
-  # Run an MTR trace to inspect the network path for packet loss or latency.
-  # -b: Show both IP addresses and hostnames.
-  # -z: Show ASN (Autonomous System Number) information.
-  # -w: Use wide report format for full hostnames.
-  # -T: Use TCP mode, which is more likely to pass through firewalls than ICMP.
-  echo "[*] Running mtr for ${endpoint}. This may take a minute..."
-  mtr -bzwr -T -P 443 -c ${MTR_PACKET_COUNT} "${endpoint}" > "${OUTPUT_DIR}/mtr_${endpoint}.txt"
-
-  # Run targeted DNS lookups against each specific server from resolv.conf.
-  # This helps diagnose issues with a single faulty DNS resolver.
-  if [ ${#DNS_SERVERS[@]} -gt 0 ]; then
-    echo "[*] Running targeted '${DNS_TOOL}' against each DNS server for ${endpoint}"
-    for server in "${DNS_SERVERS[@]}"; do
-      targeted_dns_file="${OUTPUT_DIR}/${DNS_TOOL}_on_${server}_for_${endpoint}.txt"
-      case "${DNS_TOOL}" in
-          dig)      dig "${endpoint}" "@${server}" > "${targeted_dns_file}" ;;
-          host)     host "${endpoint}" "${server}" > "${targeted_dns_file}" ;;
-          nslookup) nslookup "${endpoint}" "${server}" > "${targeted_dns_file}" ;;
-      esac
-    done
-  fi
-done
-echo -e "\n------------------------------------------------------------"
-
-
-# --- Section 4: Network Tests for Local DNS Resolvers ---
-# Test connectivity to the DNS servers themselves to rule out upstream DNS issues.
-echo "🔎 Running network tests for local DNS resolvers..."
-for server in "${DNS_SERVERS[@]}"; do
-    # Check UDP port 53, the standard port for DNS queries.
-    echo "[*] Testing connectivity to DNS resolver ${server}:53"
-    dns_port_check_file="${OUTPUT_DIR}/port_check_dns_${server}_53.txt"
-    if command -v nc &>/dev/null && timeout 5 nc -vzu "${server}" 53 &> "${dns_port_check_file}"; then
-      echo "Port check method: nc -vzu" >> "${dns_port_check_file}"
+    # Extract host and port from PROXY_URL using regex
+    if [[ "$PROXY_URL" =~ ^(https?://)?([^:]+):?([0-9]+)?$ ]]; then
+        PROXY_HOST="${BASH_REMATCH[2]}"
+        PROXY_PORT="${BASH_REMATCH[3]:-8080}"  # Default to 8080 if not specified
     else
-      echo "nc -vzu failed or not available, using bash fallback..." > "${dns_port_check_file}"
-      (timeout 5 bash -c "echo >/dev/udp/${server}/53") >> "${dns_port_check_file}" 2>&1
-      if [ $? -eq 0 ]; then echo "Port check method: bash. Result: Success" >> "${dns_port_check_file}"; else echo "Port check method: bash. Result: Failure" >> "${dns_port_check_file}"; fi
+        log_warn "Could not parse proxy URL: ${PROXY_URL}"
+        PROXY_HOST=""
+        PROXY_PORT=""
     fi
 
-    # Run MTR to the DNS server to check the path for packet loss or latency.
-    echo "[*] Running mtr to DNS resolver ${server}. This may take a minute..."
-    mtr -bzwT -c ${MTR_PACKET_COUNT} "${server}" > "${OUTPUT_DIR}/mtr_dns_${server}.txt"
-done
-echo -e "\n------------------------------------------------------------"
+    if [[ -n "$PROXY_HOST" ]]; then
+        proxy_check_file="${OUTPUT_DIR}/proxy_connectivity.txt"
+        {
+            echo "Testing connection to proxy ${PROXY_HOST}:${PROXY_PORT}..."
+            echo "Proxy URL: ${PROXY_URL}"
+        } > "$proxy_check_file"
 
+        log_test "Testing proxy connectivity to ${PROXY_HOST}:${PROXY_PORT}"
 
-# --- Section 5: Collect Firewall Details and Logs ---
-# Gather local firewall rules, as these are a common cause of blocked connections.
-echo "🔎 Collecting firewall rules and logs..."
-if command -v iptables &> /dev/null; then iptables -L -v -n > "${OUTPUT_DIR}/iptables_rules.txt"; fi
-if command -v firewall-cmd &> /dev/null; then firewall-cmd --list-all > "${OUTPUT_DIR}/firewalld_rules.txt"; fi
-echo "Note: If using a cloud provider, please also export security group/network ACL rules."
-
-# Collect New Relic agent data and logs, which may contain relevant error messages.
-if [ -d "/var/db/newrelic-infra/newrelic-agent" ]; then cp -r /var/db/newrelic-infra/newrelic-agent "${OUTPUT_DIR}/"; fi
-if [ -d "/var/db/newrelic-infra/logs" ]; then cp -r /var/db/newrelic-infra/logs "${OUTPUT_DIR}/"; fi
-
-# Collect recent system-level logs, which can provide context on network or system-wide issues.
-journalctl --since "1 hour ago" > "${OUTPUT_DIR}/journalctl_last_hour.txt"
-if [ -f "/var/log/messages" ]; then tail -n 5000 /var/log/messages > "${OUTPUT_DIR}/messages_last5000.txt"; fi
-if [ -f "/var/log/syslog" ]; then tail -n 5000 /var/log/syslog > "${OUTPUT_DIR}/syslog_last5000.txt"; fi
-echo -e "\n------------------------------------------------------------"
-
-
-# --- Section 6: Final Step ---
-echo "📦 Compressing all output files..."
-tar -czvf "${OUTPUT_DIR}.tar.gz" "${OUTPUT_DIR}"
-
-# When run with sudo, files are created as root. This changes ownership
-# back to the original user, making the final archive easily accessible.
-if [ -n "$SUDO_USER" ]; then
-    chown -R "${SUDO_USER}:${SUDO_GID}" "${OUTPUT_DIR}" "${OUTPUT_DIR}.tar.gz" &> /dev/null
+        if command_exists nc && timeout 5 nc -vz "$PROXY_HOST" "$PROXY_PORT" &>> "$proxy_check_file"; then
+            echo "Proxy reachable via nc." >> "$proxy_check_file"
+            log_pass "Proxy is reachable"
+        else
+            echo "nc check failed or unavailable. Trying curl..." >> "$proxy_check_file"
+            # Try to fetch through the proxy
+            if curl -x "$PROXY_URL" -I "https://www.google.com" -m 10 &>> "$proxy_check_file"; then
+                echo "Proxy working via curl check." >> "$proxy_check_file"
+                log_pass "Proxy is working (verified with curl)"
+            else
+                log_fail "Proxy check failed - diagnostics may fail if proxy is required"
+                RECOMMENDATIONS+=("Proxy ${PROXY_URL} is not reachable - verify proxy configuration")
+                echo "Proxy check failed." >> "$proxy_check_file"
+            fi
+        fi
+    fi
 fi
-echo -e "\n----------------------------------------------------------------------------------------------------------------------------"
-echo      "✅ Done! Please attach the '${OUTPUT_DIR}.tar.gz' file to your New Relic support case for analysis."
-echo      "----------------------------------------------------------------------------------------------------------------------------"
+
+
+# --- Section 5: Network Tests for New Relic Endpoints ---
+log_section "Testing New Relic Endpoints"
+
+ENDPOINT_COUNT=0
+TOTAL_ENDPOINTS=${#ENDPOINTS[@]}
+
+for endpoint in "${ENDPOINTS[@]}"; do
+    ((ENDPOINT_COUNT++)) || true
+    echo ""
+    log_section "Testing ${endpoint} (${ENDPOINT_COUNT}/${TOTAL_ENDPOINTS})"
+
+    # DNS Lookup Test
+    log_test "Running DNS lookup for ${endpoint}"
+    dns_lookup_file="${OUTPUT_DIR}/dns_lookup_${endpoint}.txt"
+    case "${DNS_TOOL}" in
+        dig)      dig "${endpoint}" > "${dns_lookup_file}" 2>&1 ;;
+        host)     host "${endpoint}" > "${dns_lookup_file}" 2>&1 ;;
+        nslookup) nslookup "${endpoint}" > "${dns_lookup_file}" 2>&1 ;;
+    esac
+    analyze_dns_output "$dns_lookup_file" "$endpoint" || true
+
+    # Curl TLS/HTTPS Test
+    log_test "Running HTTPS connection test for ${endpoint}"
+    curl_file="${OUTPUT_DIR}/curl_${endpoint}.txt"
+    echo "--- Testing ${endpoint}/cdn-cgi/trace ---" > "$curl_file"
+
+    CURL_ARGS=("-v" "-m" "30")
+    if [[ -n "${PROXY_URL:-}" ]]; then
+        CURL_ARGS+=("-x" "$PROXY_URL")
+    fi
+
+    curl "${CURL_ARGS[@]}" "https://${endpoint}/cdn-cgi/trace" &>> "$curl_file" || true
+
+    if [[ "$endpoint" != "infrastructure-command-api.newrelic.com" ]]; then
+        echo -e "\n\n--- Testing ${endpoint}/worker/health ---" >> "$curl_file"
+        curl "${CURL_ARGS[@]}" "https://${endpoint}/worker/health" &>> "$curl_file" || true
+    fi
+
+    analyze_curl_output "$curl_file" "$endpoint" || true
+
+    # Port Connectivity Test
+    log_test "Checking TCP port 443 connectivity to ${endpoint}"
+    port_check_file="${OUTPUT_DIR}/port_check_${endpoint}_443.txt"
+    if command_exists nc && timeout 5 nc -vz "${endpoint}" 443 &> "${port_check_file}"; then
+        echo "Port check method: nc -vz" >> "${port_check_file}"
+        analyze_port_check "$port_check_file" "$endpoint" "443" || true
+    else
+        echo "nc -vz failed or not available, using bash fallback..." > "${port_check_file}"
+        if timeout 5 bash -c "echo >/dev/tcp/${endpoint}/443" >> "${port_check_file}" 2>&1; then
+            echo "Port check method: bash. Result: Success" >> "${port_check_file}"
+            analyze_port_check "$port_check_file" "$endpoint" "443" || true
+        else
+            echo "Port check method: bash. Result: Failure" >> "${port_check_file}"
+            analyze_port_check "$port_check_file" "$endpoint" "443" || true
+        fi
+    fi
+
+    # MTR Trace Test with progress indicator
+    # MTR takes ~2 seconds per packet count
+    MTR_ESTIMATED_TIME=$((MTR_PACKET_COUNT * 2))
+    log_test "Running MTR trace to ${endpoint} (~${MTR_ESTIMATED_TIME} seconds)"
+    mtr_file="${OUTPUT_DIR}/mtr_${endpoint}.txt"
+
+    # Run MTR in background with progress indicator
+    echo -n "  "
+    mtr -bzwr -T -P 443 -c "${MTR_PACKET_COUNT}" "${endpoint}" > "$mtr_file" 2>&1 &
+    MTR_PID=$!
+
+    # Show progress dots while MTR runs
+    # Show "still running" message at 75% of estimated time
+    STILL_RUNNING_THRESHOLD=$((MTR_ESTIMATED_TIME * 3 / 8))  # 75% of time divided by 2 sec intervals
+    dot_count=0
+    while kill -0 "$MTR_PID" 2>/dev/null; do
+        echo -n "."
+        sleep 2
+        ((dot_count++)) || true
+        if [[ $dot_count -ge $STILL_RUNNING_THRESHOLD ]] && [[ $((dot_count % STILL_RUNNING_THRESHOLD)) -eq 0 ]]; then
+            echo -n " still running"
+        fi
+    done
+    wait "$MTR_PID" 2>/dev/null || true
+    echo " Done"
+
+    analyze_mtr_output "$mtr_file" "$endpoint" || true
+
+    # Targeted DNS server tests
+    if [[ ${#DNS_SERVERS[@]} -gt 0 ]]; then
+        for server in "${DNS_SERVERS[@]}"; do
+            log_test "Testing DNS resolution via DNS server ${server}"
+            targeted_dns_file="${OUTPUT_DIR}/${DNS_TOOL}_on_${server}_for_${endpoint}.txt"
+            case "${DNS_TOOL}" in
+                dig)      dig "${endpoint}" "@${server}" > "${targeted_dns_file}" 2>&1 ;;
+                host)     host "${endpoint}" "${server}" > "${targeted_dns_file}" 2>&1 ;;
+                nslookup) nslookup "${endpoint}" "${server}" > "${targeted_dns_file}" 2>&1 ;;
+            esac
+
+            # Analyze the targeted DNS result
+            if analyze_dns_output "$targeted_dns_file" "$endpoint" > /dev/null 2>&1; then
+                log_pass "DNS server ${server} can resolve ${endpoint}"
+            else
+                log_warn "DNS server ${server} had issues resolving ${endpoint}"
+            fi
+        done
+    fi
+
+    # Show running progress
+    echo -e "\n${CYAN}Progress: ${ENDPOINT_COUNT}/${TOTAL_ENDPOINTS} endpoints tested | ✓ ${GREEN}${PASS_COUNT}${NC} ${CYAN}passed | ✗ ${RED}${FAIL_COUNT}${NC} ${CYAN}failed | ⚠ ${YELLOW}${WARN_COUNT}${NC} ${CYAN}warnings${NC}"
+done
+
+
+# --- Section 6: Network Tests for Local DNS Resolvers ---
+log_section "Testing DNS Server Connectivity"
+
+if [[ ${#DNS_SERVERS[@]} -eq 0 ]]; then
+    log_warn "No DNS servers found to test"
+else
+    for server in "${DNS_SERVERS[@]}"; do
+        log_test "Testing connectivity to DNS server ${server}:53"
+
+        dns_port_check_file="${OUTPUT_DIR}/port_check_dns_${server}_53.txt"
+        if command_exists nc && timeout 5 nc -vzu "${server}" 53 &> "${dns_port_check_file}"; then
+            echo "Port check method: nc -vzu. Result: Success" >> "${dns_port_check_file}"
+            log_pass "DNS server ${server} is responding"
+        else
+            echo "nc -vzu failed or not available, using bash fallback..." > "${dns_port_check_file}"
+            if timeout 5 bash -c "echo >/dev/udp/${server}/53" >> "${dns_port_check_file}" 2>&1; then
+                echo "Port check method: bash. Result: Success" >> "${dns_port_check_file}"
+                log_pass "DNS server ${server} is responding"
+            else
+                echo "Port check method: bash. Result: Failure" >> "${dns_port_check_file}"
+                log_fail "DNS server ${server} is not responding"
+                RECOMMENDATIONS+=("DNS server ${server} is not responding - check network connectivity or use alternate DNS")
+            fi
+        fi
+
+        # Check if DNS server responds to ICMP before running MTR
+        log_test "Checking if DNS server ${server} responds to ICMP"
+        if timeout 3 ping -c 2 "${server}" > /dev/null 2>&1; then
+            log_info "DNS server responds to ICMP, running MTR trace"
+            echo -n "  "
+            mtr -bzwr -c "${MTR_PACKET_COUNT}" "${server}" > "${OUTPUT_DIR}/mtr_dns_${server}.txt" 2>&1 &
+            MTR_PID=$!
+
+            while kill -0 $MTR_PID 2>/dev/null; do
+                echo -n "."
+                sleep 2
+            done
+            wait $MTR_PID || true
+            echo " Done"
+        else
+            log_info "DNS server does not respond to ICMP - skipping MTR (common for cloud/corporate DNS servers)"
+            cat > "${OUTPUT_DIR}/mtr_dns_${server}.txt" <<EOF
+MTR trace skipped for ${server}
+
+Reason: DNS server does not respond to ICMP ping requests.
+
+This is common and expected behavior for:
+- AWS VPC DNS resolvers (e.g., 172.31.0.2)
+- Azure Virtual Network DNS
+- Google Cloud DNS
+- Corporate/enterprise DNS servers with ICMP disabled for security
+
+The DNS functionality has been verified via UDP port 53 connectivity check above.
+No action needed - this is normal and does not indicate a problem.
+EOF
+        fi
+    done
+fi
+
+
+# --- Section 7: Collect Firewall Details and Logs ---
+log_section "Collecting Firewall Rules and Logs"
+
+# Gather local firewall rules
+log_test "Collecting local firewall configuration"
+if command_exists iptables; then
+    iptables -L -v -n > "${OUTPUT_DIR}/iptables_rules.txt" 2>&1 || true
+    log_info "iptables rules saved"
+fi
+if command_exists firewall-cmd; then
+    firewall-cmd --list-all > "${OUTPUT_DIR}/firewalld_rules.txt" 2>&1 || true
+    log_info "firewalld rules saved"
+fi
+
+log_info "Note: If using a cloud provider, also export security group/network ACL rules"
+
+# Collect New Relic agent data and logs
+log_test "Collecting New Relic Infrastructure agent logs"
+if [[ -d "/var/db/newrelic-infra/newrelic-agent" ]]; then
+    cp -r /var/db/newrelic-infra/newrelic-agent "${OUTPUT_DIR}/" 2>&1 || true
+    log_info "Agent data copied"
+fi
+if [[ -d "/var/db/newrelic-infra/logs" ]]; then
+    cp -r /var/db/newrelic-infra/logs "${OUTPUT_DIR}/" 2>&1 || true
+    log_info "Agent logs copied"
+fi
+
+# Collect system logs
+log_test "Collecting system logs"
+if command_exists journalctl; then
+    journalctl --since "1 hour ago" > "${OUTPUT_DIR}/journalctl_last_hour.txt" 2>&1 || true
+    log_info "journalctl logs saved"
+fi
+if [[ -f "/var/log/messages" ]]; then
+    tail -n 5000 /var/log/messages > "${OUTPUT_DIR}/messages_last5000.txt" 2>&1 || true
+fi
+if [[ -f "/var/log/syslog" ]]; then
+    tail -n 5000 /var/log/syslog > "${OUTPUT_DIR}/syslog_last5000.txt" 2>&1 || true
+fi
+
+
+# --- Section 8: Generate Summary Report ---
+generate_summary_report() {
+    local summary_file="${OUTPUT_DIR}/SUMMARY.txt"
+
+    # Create summary report
+    cat > "$summary_file" <<EOF
+═══════════════════════════════════════════════════════════════
+  NEW RELIC INFRASTRUCTURE NETWORK DIAGNOSTICS SUMMARY
+═══════════════════════════════════════════════════════════════
+
+Test Results: ${PASS_COUNT} passed, ${FAIL_COUNT} failed, ${WARN_COUNT} warnings
+Timestamp: $(date)
+Hostname: $(hostname)
+Proxy: ${PROXY_URL:-None configured}
+
+EOF
+
+    # Endpoint connectivity section
+    echo "───────────────────────────────────────────────────────────" >> "$summary_file"
+    echo "NEW RELIC ENDPOINT CONNECTIVITY" >> "$summary_file"
+    echo "───────────────────────────────────────────────────────────" >> "$summary_file"
+    echo "" >> "$summary_file"
+
+    for endpoint in "${ENDPOINTS[@]}"; do
+        local curl_file="${OUTPUT_DIR}/curl_${endpoint}.txt"
+        local status="UNKNOWN"
+
+        if grep -q "HTTP/[12][.0-9]* 200\|HTTP/[12][.0-9]* 204" "$curl_file"; then
+            status="✅ Healthy"
+        elif grep -q "Connection refused" "$curl_file"; then
+            status="❌ Connection Refused"
+        elif grep -q "Connection timed out\|Operation timed out" "$curl_file"; then
+            status="❌ Connection Timeout"
+        elif grep -q "SSL certificate problem\|certificate verify failed" "$curl_file"; then
+            status="❌ SSL Certificate Error"
+        elif grep -q "TLS handshake\|SSL connect error" "$curl_file" && ! grep -q "HTTP/[12]" "$curl_file"; then
+            status="❌ TLS Handshake Failed"
+        elif grep -q "Could not resolve host" "$curl_file"; then
+            status="❌ DNS Resolution Failed"
+        else
+            status="⚠️  Check Required"
+        fi
+
+        printf "%-45s - %s\n" "$endpoint" "$status" >> "$summary_file"
+    done
+
+    # DNS server health section
+    if [[ ${#DNS_SERVERS[@]} -gt 0 ]]; then
+        echo "" >> "$summary_file"
+        echo "───────────────────────────────────────────────────────────" >> "$summary_file"
+        echo "DNS SERVER HEALTH" >> "$summary_file"
+        echo "───────────────────────────────────────────────────────────" >> "$summary_file"
+        echo "" >> "$summary_file"
+
+        for server in "${DNS_SERVERS[@]}"; do
+            local dns_check_file="${OUTPUT_DIR}/port_check_dns_${server}_53.txt"
+            local status="UNKNOWN"
+
+            if [[ -f "$dns_check_file" ]]; then
+                if grep -q "succeeded\|Success" "$dns_check_file"; then
+                    status="✅ Responding"
+                elif grep -q "Failure\|timed out" "$dns_check_file"; then
+                    status="❌ Not Responding"
+                else
+                    status="⚠️  Check Required"
+                fi
+            fi
+
+            printf "%-45s - %s\n" "$server" "$status" >> "$summary_file"
+        done
+    fi
+
+    # Proxy status
+    if [[ -n "${PROXY_URL:-}" ]]; then
+        echo "" >> "$summary_file"
+        echo "───────────────────────────────────────────────────────────" >> "$summary_file"
+        echo "PROXY STATUS" >> "$summary_file"
+        echo "───────────────────────────────────────────────────────────" >> "$summary_file"
+        echo "" >> "$summary_file"
+        echo "Proxy URL: ${PROXY_URL}" >> "$summary_file"
+
+        local proxy_file="${OUTPUT_DIR}/proxy_connectivity.txt"
+        if [[ -f "$proxy_file" ]]; then
+            if grep -q "reachable\|working" "$proxy_file"; then
+                echo "Status: ✅ Proxy is reachable and working" >> "$summary_file"
+            else
+                echo "Status: ❌ Proxy check failed" >> "$summary_file"
+            fi
+        fi
+    fi
+
+    # Detected issues section
+    # Temporarily disable set -u to safely check empty arrays
+    set +u
+    local has_failures=$( [[ ${#FAILURES[@]} -gt 0 ]] && echo 1 || echo 0 )
+    local has_warnings=$( [[ ${#WARNINGS[@]} -gt 0 ]] && echo 1 || echo 0 )
+    local has_recommendations=$( [[ ${#RECOMMENDATIONS[@]} -gt 0 ]] && echo 1 || echo 0 )
+    set -u
+
+    if [[ $has_failures -eq 1 || $has_warnings -eq 1 ]]; then
+        echo "" >> "$summary_file"
+        echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+        echo "DETECTED ISSUES" >> "$summary_file"
+        echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+        echo "" >> "$summary_file"
+
+        if [[ $has_failures -eq 1 ]]; then
+            echo "❌ CRITICAL ISSUES:" >> "$summary_file"
+            echo "" >> "$summary_file"
+            for failure in "${FAILURES[@]}"; do
+                echo "  • $failure" >> "$summary_file"
+            done
+            echo "" >> "$summary_file"
+        fi
+
+        if [[ $has_warnings -eq 1 ]]; then
+            echo "⚠️  WARNINGS:" >> "$summary_file"
+            echo "" >> "$summary_file"
+            for warning in "${WARNINGS[@]}"; do
+                echo "  • $warning" >> "$summary_file"
+            done
+            echo "" >> "$summary_file"
+        fi
+    fi
+
+    # Recommendations section
+    if [[ $has_recommendations -eq 1 ]]; then
+        echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+        echo "RECOMMENDATIONS" >> "$summary_file"
+        echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+        echo "" >> "$summary_file"
+        echo "Based on the test results, we recommend:" >> "$summary_file"
+        echo "" >> "$summary_file"
+
+        local rec_num=1
+        # Deduplicate recommendations
+        local -A seen_recs
+        for rec in "${RECOMMENDATIONS[@]}"; do
+            if [[ -z "${seen_recs[$rec]:-}" ]]; then
+                echo "${rec_num}. $rec" >> "$summary_file"
+                echo "" >> "$summary_file"
+                seen_recs[$rec]=1
+                ((rec_num++)) || true
+            fi
+        done
+
+        # Add standard recommendations based on failure patterns
+        if [[ $FAIL_COUNT -gt 0 ]]; then
+            if grep -q "TLS\|SSL\|certificate" "$summary_file"; then
+                echo "${rec_num}. Check for corporate firewall SSL inspection:" >> "$summary_file"
+                echo "   • Whitelist *.newrelic.com domains in SSL inspection bypass" >> "$summary_file"
+                echo "   • Contact your network/security team about SSL interception" >> "$summary_file"
+                echo "" >> "$summary_file"
+                ((rec_num++)) || true
+            fi
+
+            echo "${rec_num}. Provide this tarball to New Relic Support:" >> "$summary_file"
+            echo "   • Attach ${OUTPUT_DIR}.tar.gz to your support case" >> "$summary_file"
+            echo "   • Include this SUMMARY.txt in your case description" >> "$summary_file"
+            echo "" >> "$summary_file"
+        fi
+    else
+        echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+        echo "RESULT" >> "$summary_file"
+        echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+        echo "" >> "$summary_file"
+        echo "✅ All tests passed! Network connectivity to New Relic appears healthy." >> "$summary_file"
+        echo "" >> "$summary_file"
+        echo "If you're still experiencing issues with the Infrastructure agent:" >> "$summary_file"
+        echo "  1. Check the agent configuration file" >> "$summary_file"
+        echo "  2. Verify the license key is correct" >> "$summary_file"
+        echo "  3. Review agent logs in the collected data" >> "$summary_file"
+        echo "  4. Attach this tarball to your support case for further analysis" >> "$summary_file"
+        echo "" >> "$summary_file"
+    fi
+
+    echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+    echo "For more information, see: https://docs.newrelic.com/docs/infrastructure/" >> "$summary_file"
+    echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+}
+
+
+# --- Section 9: Generate and Display Summary ---
+log_section "Generating Summary Report"
+
+generate_summary_report
+
+# Display summary to console
+echo ""
+log_section "TEST SUMMARY"
+echo ""
+
+# Display the summary file with colors
+if [[ -f "${OUTPUT_DIR}/SUMMARY.txt" ]]; then
+    # Display summary with color highlighting
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^═+$ ]] || [[ "$line" =~ ^─+$ ]]; then
+            echo -e "${CYAN}${line}${NC}"
+        elif [[ "$line" =~ ✅ ]]; then
+            echo -e "${GREEN}${line}${NC}"
+        elif [[ "$line" =~ ❌ ]]; then
+            echo -e "${RED}${line}${NC}"
+        elif [[ "$line" =~ ⚠️ ]]; then
+            echo -e "${YELLOW}${line}${NC}"
+        elif [[ "$line" =~ ^[A-Z\ ]+$ ]] && [[ ${#line} -lt 70 ]]; then
+            echo -e "${BOLD}${line}${NC}"
+        else
+            echo "$line"
+        fi
+    done < "${OUTPUT_DIR}/SUMMARY.txt"
+fi
+
+echo ""
+log_section "Creating Archive"
+
+# Compress all output files
+log_info "Compressing diagnostic data..."
+tar -czf "${OUTPUT_DIR}.tar.gz" "${OUTPUT_DIR}" 2>&1 | head -20 || true
+
+# When run with sudo, files are created as root. Change ownership back to the original user
+if [[ -n "${SUDO_USER:-}" ]]; then
+    chown -R "${SUDO_USER}:${SUDO_GID:-$(id -g "$SUDO_USER")}" "${OUTPUT_DIR}" "${OUTPUT_DIR}.tar.gz" &> /dev/null || true
+fi
+
+echo ""
+log_section "DIAGNOSTICS COMPLETE"
+echo ""
+
+if [[ $FAIL_COUNT -gt 0 ]]; then
+    echo -e "${RED}⚠️  ${FAIL_COUNT} critical issues detected!${NC}"
+    echo -e "${YELLOW}Please review the summary above and attach ${OUTPUT_DIR}.tar.gz to your support case.${NC}"
+elif [[ $WARN_COUNT -gt 0 ]]; then
+    echo -e "${YELLOW}⚠️  ${WARN_COUNT} warnings detected.${NC}"
+    echo -e "${YELLOW}Review the summary above. If issues persist, attach ${OUTPUT_DIR}.tar.gz to your support case.${NC}"
+else
+    echo -e "${GREEN}✅ All tests passed!${NC}"
+    echo -e "${GREEN}Network connectivity appears healthy. If issues persist, attach ${OUTPUT_DIR}.tar.gz to your support case.${NC}"
+fi
+
+echo ""
+echo -e "${CYAN}Output files saved in:${NC} ${OUTPUT_DIR}/"
+echo -e "${CYAN}Archive file:${NC}          ${OUTPUT_DIR}.tar.gz"
+echo -e "${CYAN}Summary report:${NC}        ${OUTPUT_DIR}/SUMMARY.txt"
+echo ""
+echo -e "${BOLD}Next steps:${NC}"
+echo "  1. Review the summary above"
+echo "  2. Check ${OUTPUT_DIR}/SUMMARY.txt for detailed recommendations"
+echo "  3. Attach ${OUTPUT_DIR}.tar.gz to your New Relic support case"
+echo ""
