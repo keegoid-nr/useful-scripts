@@ -6,6 +6,12 @@ This directory contains scripts designed to help diagnose network connectivity i
 
 These scripts are intended to be run on hosts experiencing connectivity issues with New Relic. They collect a variety of network and system information, run connectivity tests to New Relic endpoints, and package the results into a compressed archive for easy sharing with New Relic support.
 
+## ⚠️ Disclaimer
+
+**These scripts are provided as-is without warranty of any kind, either expressed or implied. These are NOT official New Relic products. Use at your own risk.** New Relic shall not be liable for any damages arising from the use of these scripts. Always review scripts before running them in production environments.
+
+These scripts are community-supported tools developed by New Relic employees to assist with troubleshooting network connectivity issues. For official New Relic documentation and support, please visit [docs.newrelic.com](https://docs.newrelic.com).
+
 ## Supported Agent Types
 
 - **APM** (Application Performance Monitoring)

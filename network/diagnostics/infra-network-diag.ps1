@@ -3,6 +3,12 @@
 # This script collects network diagnostics information
 # related to the Infra agent for New Relic support cases.
 #
+# DISCLAIMER:
+# This script is provided as-is without warranty of any kind, either expressed or
+# implied. This is NOT an official New Relic product. Use at your own risk. New Relic
+# shall not be liable for any damages arising from the use of this script. Always
+# review scripts before running them in production environments.
+#
 # Author : Keegan Mullaney
 # Company: New Relic
 # Email  : kmullaney@newrelic.com

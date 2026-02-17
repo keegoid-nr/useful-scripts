@@ -19,6 +19,12 @@ It performs the following actions:
 - Collects local firewall rules and recent system/agent logs.
 - Packages all collected data into a single compressed tarball.
 
+DISCLAIMER:
+This script is provided as-is without warranty of any kind, either expressed or
+implied. This is NOT an official New Relic product. Use at your own risk. New Relic
+shall not be liable for any damages arising from the use of this script. Always
+review scripts before running them in production environments.
+
 Author : Keegan Mullaney
 Company: New Relic
 Email  : kmullaney@newrelic.com
