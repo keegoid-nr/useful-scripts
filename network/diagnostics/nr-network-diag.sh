@@ -686,6 +686,58 @@ for endpoint in "${ENDPOINTS[@]}"; do
     esac
     analyze_dns_output "$dns_lookup_file" "$endpoint" || true
 
+    # Reverse DNS Lookup Test (to detect DNS misconfiguration)
+    # Extract IP addresses from forward lookup and verify reverse lookup
+    log_test "Running reverse DNS lookup for ${endpoint}"
+    reverse_dns_file="${OUTPUT_DIR}/reverse_dns_lookup_${endpoint}.txt"
+
+    # Extract IPs from forward lookup based on DNS tool used
+    case "${DNS_TOOL}" in
+        dig)
+            # Extract A and AAAA records from dig output (handles CNAMEs)
+            mapfile -t RESOLVED_IPS < <(awk '/ANSWER SECTION/,/^$/ {if ($4 == "A" || $4 == "AAAA") print $5}' "${dns_lookup_file}")
+            ;;
+        host)
+            # Extract from "has address" or "has IPv6 address" lines
+            mapfile -t RESOLVED_IPS < <(grep -E "has address|has IPv6 address" "${dns_lookup_file}" | awk '{print $NF}')
+            ;;
+        nslookup)
+            # Extract from "Address:" lines (skip the first one which is the DNS server)
+            mapfile -t RESOLVED_IPS < <(grep "^Address:" "${dns_lookup_file}" | tail -n +2 | awk '{print $2}' | sed 's/#.*$//')
+            ;;
+    esac
+
+    if [[ ${#RESOLVED_IPS[@]} -gt 0 ]]; then
+        echo "Forward lookup returned ${#RESOLVED_IPS[@]} IP(s): ${RESOLVED_IPS[*]}" > "${reverse_dns_file}"
+        echo "" >> "${reverse_dns_file}"
+
+        reverse_dns_ok=true
+        for ip in "${RESOLVED_IPS[@]}"; do
+            echo "--- Reverse DNS lookup for ${ip} ---" >> "${reverse_dns_file}"
+            case "${DNS_TOOL}" in
+                dig)      dig -x "${ip}" >> "${reverse_dns_file}" 2>&1 ;;
+                host)     host "${ip}" >> "${reverse_dns_file}" 2>&1 ;;
+                nslookup) nslookup "${ip}" >> "${reverse_dns_file}" 2>&1 ;;
+            esac
+            echo "" >> "${reverse_dns_file}"
+
+            # Check if reverse lookup succeeded
+            if grep -qi "NXDOMAIN\|SERVFAIL\|not found\|can't find" "${reverse_dns_file}"; then
+                log_info "No reverse DNS (PTR) record for ${ip} (${endpoint}) - this is common for external services"
+                reverse_dns_ok=false
+            fi
+        done
+
+        if $reverse_dns_ok; then
+            log_pass "Reverse DNS lookups successful for ${endpoint}"
+        else
+            log_info "Reverse DNS check complete (missing PTR records do not affect connectivity)"
+        fi
+    else
+        echo "No IP addresses found in forward lookup to test reverse DNS" > "${reverse_dns_file}"
+        log_info "Skipping reverse DNS test - no IPs resolved"
+    fi
+
     # Curl TLS/HTTPS Test
     log_test "Running HTTPS connection test for ${endpoint}"
     curl_file="${OUTPUT_DIR}/curl_${endpoint}.txt"
