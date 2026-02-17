@@ -1,6 +1,6 @@
 #!/bin/bash
 : '
-New Relic Infrastructure Network Diagnostics
+New Relic Network Diagnostics
 
 This script gathers comprehensive network diagnostics to help troubleshoot
 connectivity issues between a host and New Relic endpoints. It is designed
@@ -8,6 +8,7 @@ to be run on a problematic host and the output bundled for a support case.
 
 It performs the following actions:
 - Checks system compatibility and for required tools (mtr, curl, dig/host).
+- Allows selection of which New Relic agent type to troubleshoot (APM, Browser, Mobile, Infrastructure, etc.).
 - Gathers system DNS configuration (/etc/resolv.conf, etc.).
 - For each New Relic endpoint, it runs:
     - DNS lookups.
@@ -29,9 +30,11 @@ License: Apache License 2.0
 
 # Displays usage information and exits.
 usage() {
-    echo "Usage: sudo $0 [-c <count>] [-p <proxy_url>]"
+    echo "Usage: sudo $0 [-c <count>] [-p <proxy_url>] [-a <agent_type>] [-r <region>]"
     echo "  -c <count>: Optional. Number of packets for mtr to send (default: 20)."
     echo "  -p <proxy_url>: Optional. Proxy server URL (e.g., http://proxy.example.com:8080)."
+    echo "  -a <agent_type>: Optional. Agent type to test (apm, browser, mobile, infrastructure, opentelemetry, all). If not specified, will prompt."
+    echo "  -r <region>: Optional. Data center region (us or eu). Default: us."
     exit 1
 }
 
@@ -197,9 +200,13 @@ trap cleanup EXIT INT TERM
 
 # Default number of packets for MTR to send in each trace.
 MTR_PACKET_COUNT=20
+# Default region
+REGION="us"
+# Agent type will be set by user selection or command line
+AGENT_TYPE=""
 
 # Parse command-line flags (e.g., -c for packet count, -p for proxy).
-while getopts ":c:p:h" opt; do
+while getopts ":c:p:a:r:h" opt; do
   case ${opt} in
     c )
       # Validate that the argument for -c is a positive integer.
@@ -212,6 +219,16 @@ while getopts ":c:p:h" opt; do
       ;;
     p )
       PROXY_URL=${OPTARG}
+      ;;
+    a )
+      AGENT_TYPE=$(echo "${OPTARG}" | tr '[:upper:]' '[:lower:]')
+      ;;
+    r )
+      REGION=$(echo "${OPTARG}" | tr '[:upper:]' '[:lower:]')
+      if [[ "$REGION" != "us" && "$REGION" != "eu" ]]; then
+        echo "❌ Error: Invalid region. Must be 'us' or 'eu'." >&2
+        usage
+      fi
       ;;
     h )
       usage
@@ -229,13 +246,181 @@ done
 # Remove the parsed options from the script's arguments.
 shift $((OPTIND -1))
 
-# A list of critical New Relic ingestion endpoints for the Infrastructure agent.
-ENDPOINTS=(
-  "metric-api.newrelic.com"
-  "infra-api.newrelic.com"
-  "infrastructure-command-api.newrelic.com"
-  "log-api.newrelic.com"
-)
+# Function to display agent selection menu
+select_agent_type() {
+    echo ""
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC}  ${BOLD}Select New Relic Agent Type to Troubleshoot${NC}              ${CYAN}║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "  1) APM (Application Performance Monitoring)"
+    echo "  2) Browser Monitoring"
+    echo "  3) Mobile Monitoring"
+    echo "  4) Infrastructure Monitoring"
+    echo "  5) OpenTelemetry"
+    echo "  6) All Ingest APIs (Event, Log, Metric, Trace)"
+    echo "  7) All Agent Types (comprehensive test)"
+    echo ""
+    echo -n "Enter your choice (1-7): "
+    read -r choice
+
+    case $choice in
+        1) AGENT_TYPE="apm" ;;
+        2) AGENT_TYPE="browser" ;;
+        3) AGENT_TYPE="mobile" ;;
+        4) AGENT_TYPE="infrastructure" ;;
+        5) AGENT_TYPE="opentelemetry" ;;
+        6) AGENT_TYPE="apis" ;;
+        7) AGENT_TYPE="all" ;;
+        *)
+            echo -e "${RED}❌ Invalid choice. Please run the script again.${NC}"
+            exit 1
+            ;;
+    esac
+}
+
+# Function to set endpoints based on agent type and region
+set_endpoints() {
+    local agent="$1"
+    local region="$2"
+
+    case "$agent" in
+        apm)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "collector.eu.newrelic.com"
+                    "collector.eu01.nr-data.net"
+                )
+            else
+                ENDPOINTS=(
+                    "collector.newrelic.com"
+                )
+            fi
+            ;;
+        browser)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "bam.eu01.nr-data.net"
+                )
+            else
+                ENDPOINTS=(
+                    "bam.nr-data.net"
+                    "bam-cell.nr-data.net"
+                )
+            fi
+            ;;
+        mobile)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "mobile-collector.eu01.nr-data.net"
+                    "mobile-crash.eu01.nr-data.net"
+                    "mobile-symbol-upload.eu01.nr-data.net"
+                )
+            else
+                ENDPOINTS=(
+                    "mobile-collector.newrelic.com"
+                    "mobile-crash.newrelic.com"
+                    "mobile-symbol-upload.newrelic.com"
+                )
+            fi
+            ;;
+        infrastructure)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "infra-api.eu.newrelic.com"
+                    "infra-api.eu01.nr-data.net"
+                    "identity-api.eu.newrelic.com"
+                    "infrastructure-command-api.eu.newrelic.com"
+                    "log-api.eu.newrelic.com"
+                )
+            else
+                ENDPOINTS=(
+                    "infra-api.newrelic.com"
+                    "identity-api.newrelic.com"
+                    "infrastructure-command-api.newrelic.com"
+                    "log-api.newrelic.com"
+                    "metric-api.newrelic.com"
+                )
+            fi
+            ;;
+        opentelemetry)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "otlp.eu01.nr-data.net"
+                )
+            else
+                ENDPOINTS=(
+                    "otlp.nr-data.net"
+                )
+            fi
+            ;;
+        apis)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "insights-collector.eu01.nr-data.net"
+                    "log-api.eu.newrelic.com"
+                    "metric-api.eu.newrelic.com"
+                    "trace-api.eu.newrelic.com"
+                )
+            else
+                ENDPOINTS=(
+                    "insights-collector.newrelic.com"
+                    "log-api.newrelic.com"
+                    "metric-api.newrelic.com"
+                    "trace-api.newrelic.com"
+                )
+            fi
+            ;;
+        all)
+            if [[ "$region" == "eu" ]]; then
+                ENDPOINTS=(
+                    "collector.eu.newrelic.com"
+                    "collector.eu01.nr-data.net"
+                    "bam.eu01.nr-data.net"
+                    "mobile-collector.eu01.nr-data.net"
+                    "mobile-crash.eu01.nr-data.net"
+                    "infra-api.eu.newrelic.com"
+                    "infra-api.eu01.nr-data.net"
+                    "identity-api.eu.newrelic.com"
+                    "infrastructure-command-api.eu.newrelic.com"
+                    "insights-collector.eu01.nr-data.net"
+                    "log-api.eu.newrelic.com"
+                    "metric-api.eu.newrelic.com"
+                    "trace-api.eu.newrelic.com"
+                    "otlp.eu01.nr-data.net"
+                )
+            else
+                ENDPOINTS=(
+                    "collector.newrelic.com"
+                    "bam.nr-data.net"
+                    "bam-cell.nr-data.net"
+                    "mobile-collector.newrelic.com"
+                    "mobile-crash.newrelic.com"
+                    "infra-api.newrelic.com"
+                    "identity-api.newrelic.com"
+                    "infrastructure-command-api.newrelic.com"
+                    "insights-collector.newrelic.com"
+                    "log-api.newrelic.com"
+                    "metric-api.newrelic.com"
+                    "trace-api.newrelic.com"
+                    "otlp.nr-data.net"
+                )
+            fi
+            ;;
+        *)
+            echo -e "${RED}❌ Error: Unknown agent type: $agent${NC}"
+            exit 1
+            ;;
+    esac
+}
+
+# If agent type not specified via command line, prompt user
+if [[ -z "$AGENT_TYPE" ]]; then
+    select_agent_type
+fi
+
+# Set endpoints based on selected agent type and region
+set_endpoints "$AGENT_TYPE" "$REGION"
 
 
 # --- Section 3: Analysis Functions ---
@@ -367,13 +552,33 @@ analyze_port_check() {
 
 
 # --- Script Start ---
-log_section "NEW RELIC INFRASTRUCTURE NETWORK DIAGNOSTICS"
+# Get friendly name for agent type
+get_agent_display_name() {
+    case "$1" in
+        apm) echo "APM (Application Performance Monitoring)" ;;
+        browser) echo "Browser Monitoring" ;;
+        mobile) echo "Mobile Monitoring" ;;
+        infrastructure) echo "Infrastructure Monitoring" ;;
+        opentelemetry) echo "OpenTelemetry" ;;
+        apis) echo "Ingest APIs (Event, Log, Metric, Trace)" ;;
+        all) echo "All Agent Types" ;;
+        *) echo "Unknown" ;;
+    esac
+}
+
+AGENT_DISPLAY_NAME=$(get_agent_display_name "$AGENT_TYPE")
+REGION_DISPLAY=$(echo "$REGION" | tr '[:lower:]' '[:upper:]')
+
+log_section "NEW RELIC NETWORK DIAGNOSTICS"
 
 # Create a unique, timestamped directory to store all output files.
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR="infra-network-diag_${TIMESTAMP}"
+OUTPUT_DIR="nr-network-diag_${AGENT_TYPE}_${REGION}_${TIMESTAMP}"
 mkdir -p "${OUTPUT_DIR}"
 
+echo ""
+log_info "Agent Type: ${AGENT_DISPLAY_NAME}"
+log_info "Data Center Region: ${REGION_DISPLAY}"
 log_info "Output directory: ./${OUTPUT_DIR}/"
 log_info "MTR packet count: ${MTR_PACKET_COUNT}"
 if [[ -n "${PROXY_URL:-}" ]]; then
@@ -495,31 +700,48 @@ for endpoint in "${ENDPOINTS[@]}"; do
     analyze_curl_output "$curl_file" "$endpoint" || true
 
     # Port Connectivity Test
-    log_test "Checking TCP port 443 connectivity to ${endpoint}"
-    port_check_file="${OUTPUT_DIR}/port_check_${endpoint}_443.txt"
-    if command_exists nc && timeout 5 nc -vz "${endpoint}" 443 &> "${port_check_file}"; then
-        echo "Port check method: nc -vz" >> "${port_check_file}"
-        analyze_port_check "$port_check_file" "$endpoint" "443" || true
+    # OpenTelemetry endpoints use ports 443, 4317, and 4318
+    if [[ "$endpoint" == *"otlp"* ]]; then
+        PORTS_TO_TEST=(443 4317 4318)
     else
-        echo "nc -vz failed or not available, using bash fallback..." > "${port_check_file}"
-        if timeout 5 bash -c "echo >/dev/tcp/${endpoint}/443" >> "${port_check_file}" 2>&1; then
-            echo "Port check method: bash. Result: Success" >> "${port_check_file}"
-            analyze_port_check "$port_check_file" "$endpoint" "443" || true
-        else
-            echo "Port check method: bash. Result: Failure" >> "${port_check_file}"
-            analyze_port_check "$port_check_file" "$endpoint" "443" || true
-        fi
+        PORTS_TO_TEST=(443)
     fi
+
+    for port in "${PORTS_TO_TEST[@]}"; do
+        log_test "Checking TCP port ${port} connectivity to ${endpoint}"
+        port_check_file="${OUTPUT_DIR}/port_check_${endpoint}_${port}.txt"
+        if command_exists nc && timeout 5 nc -vz "${endpoint}" "$port" &> "${port_check_file}"; then
+            echo "Port check method: nc -vz" >> "${port_check_file}"
+            analyze_port_check "$port_check_file" "$endpoint" "$port" || true
+        else
+            echo "nc -vz failed or not available, using bash fallback..." > "${port_check_file}"
+            if timeout 5 bash -c "echo >/dev/tcp/${endpoint}/${port}" >> "${port_check_file}" 2>&1; then
+                echo "Port check method: bash. Result: Success" >> "${port_check_file}"
+                analyze_port_check "$port_check_file" "$endpoint" "$port" || true
+            else
+                echo "Port check method: bash. Result: Failure" >> "${port_check_file}"
+                analyze_port_check "$port_check_file" "$endpoint" "$port" || true
+            fi
+        fi
+    done
 
     # MTR Trace Test with progress indicator
     # MTR takes ~2 seconds per packet count
     MTR_ESTIMATED_TIME=$((MTR_PACKET_COUNT * 2))
-    log_test "Running MTR trace to ${endpoint} (~${MTR_ESTIMATED_TIME} seconds)"
+
+    # Use port 4317 for OpenTelemetry endpoints (gRPC), 443 for others
+    if [[ "$endpoint" == *"otlp"* ]]; then
+        MTR_PORT=4317
+    else
+        MTR_PORT=443
+    fi
+
+    log_test "Running MTR trace to ${endpoint}:${MTR_PORT} (~${MTR_ESTIMATED_TIME} seconds)"
     mtr_file="${OUTPUT_DIR}/mtr_${endpoint}.txt"
 
     # Run MTR in background with progress indicator
     echo -n "  "
-    mtr -bzwr -T -P 443 -c "${MTR_PACKET_COUNT}" "${endpoint}" > "$mtr_file" 2>&1 &
+    mtr -bzwr -T -P "$MTR_PORT" -c "${MTR_PACKET_COUNT}" "${endpoint}" > "$mtr_file" 2>&1 &
     MTR_PID=$!
 
     # Show progress dots while MTR runs
@@ -641,15 +863,20 @@ fi
 log_info "Note: If using a cloud provider, also export security group/network ACL rules"
 
 # Collect New Relic agent data and logs
-log_test "Collecting New Relic Infrastructure agent logs"
-if [[ -d "/var/db/newrelic-infra/newrelic-agent" ]]; then
-    cp -r /var/db/newrelic-infra/newrelic-agent "${OUTPUT_DIR}/" 2>&1 || true
-    log_info "Agent data copied"
+log_test "Collecting New Relic agent logs (if available)"
+if [[ "$AGENT_TYPE" == "infrastructure" || "$AGENT_TYPE" == "all" ]]; then
+    if [[ -d "/var/db/newrelic-infra/newrelic-agent" ]]; then
+        cp -r /var/db/newrelic-infra/newrelic-agent "${OUTPUT_DIR}/" 2>&1 || true
+        log_info "Infrastructure agent data copied"
+    fi
+    if [[ -d "/var/db/newrelic-infra/logs" ]]; then
+        cp -r /var/db/newrelic-infra/logs "${OUTPUT_DIR}/" 2>&1 || true
+        log_info "Infrastructure agent logs copied"
+    fi
 fi
-if [[ -d "/var/db/newrelic-infra/logs" ]]; then
-    cp -r /var/db/newrelic-infra/logs "${OUTPUT_DIR}/" 2>&1 || true
-    log_info "Agent logs copied"
-fi
+# Note: APM, Browser, and Mobile agent logs are typically in application directories
+# and vary by language/platform, so we don't attempt to collect them automatically.
+log_info "For APM/Browser/Mobile agent logs, please collect them from your application directory"
 
 # Collect system logs
 log_test "Collecting system logs"
@@ -672,9 +899,11 @@ generate_summary_report() {
     # Create summary report
     cat > "$summary_file" <<EOF
 ═══════════════════════════════════════════════════════════════
-  NEW RELIC INFRASTRUCTURE NETWORK DIAGNOSTICS SUMMARY
+  NEW RELIC NETWORK DIAGNOSTICS SUMMARY
 ═══════════════════════════════════════════════════════════════
 
+Agent Type: ${AGENT_DISPLAY_NAME}
+Data Center Region: ${REGION_DISPLAY}
 Test Results: ${PASS_COUNT} passed, ${FAIL_COUNT} failed, ${WARN_COUNT} warnings
 Timestamp: $(date)
 Hostname: $(hostname)
@@ -833,16 +1062,50 @@ EOF
         echo "" >> "$summary_file"
         echo "✅ All tests passed! Network connectivity to New Relic appears healthy." >> "$summary_file"
         echo "" >> "$summary_file"
-        echo "If you're still experiencing issues with the Infrastructure agent:" >> "$summary_file"
+        echo "If you're still experiencing issues with your New Relic agent:" >> "$summary_file"
         echo "  1. Check the agent configuration file" >> "$summary_file"
         echo "  2. Verify the license key is correct" >> "$summary_file"
-        echo "  3. Review agent logs in the collected data" >> "$summary_file"
-        echo "  4. Attach this tarball to your support case for further analysis" >> "$summary_file"
+        echo "  3. Review agent logs (if collected in the tarball)" >> "$summary_file"
+        echo "  4. Verify you're using the correct data center region (US vs EU)" >> "$summary_file"
+        echo "  5. Attach this tarball to your support case for further analysis" >> "$summary_file"
         echo "" >> "$summary_file"
     fi
 
     echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
-    echo "For more information, see: https://docs.newrelic.com/docs/infrastructure/" >> "$summary_file"
+    echo "ADDITIONAL RESOURCES" >> "$summary_file"
+    echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
+    echo "" >> "$summary_file"
+    echo "New Relic Network Traffic Documentation:" >> "$summary_file"
+    echo "  https://docs.newrelic.com/docs/new-relic-solutions/get-started/networks/" >> "$summary_file"
+    echo "" >> "$summary_file"
+
+    case "$AGENT_TYPE" in
+        apm)
+            echo "APM Agent Documentation:" >> "$summary_file"
+            echo "  https://docs.newrelic.com/docs/apm/" >> "$summary_file"
+            ;;
+        browser)
+            echo "Browser Monitoring Documentation:" >> "$summary_file"
+            echo "  https://docs.newrelic.com/docs/browser/" >> "$summary_file"
+            ;;
+        mobile)
+            echo "Mobile Monitoring Documentation:" >> "$summary_file"
+            echo "  https://docs.newrelic.com/docs/mobile-monitoring/" >> "$summary_file"
+            ;;
+        infrastructure)
+            echo "Infrastructure Monitoring Documentation:" >> "$summary_file"
+            echo "  https://docs.newrelic.com/docs/infrastructure/" >> "$summary_file"
+            ;;
+        opentelemetry)
+            echo "OpenTelemetry Documentation:" >> "$summary_file"
+            echo "  https://docs.newrelic.com/docs/more-integrations/open-source-telemetry-integrations/opentelemetry/" >> "$summary_file"
+            ;;
+        apis)
+            echo "Telemetry API Documentation:" >> "$summary_file"
+            echo "  https://docs.newrelic.com/docs/data-apis/ingest-apis/" >> "$summary_file"
+            ;;
+    esac
+    echo "" >> "$summary_file"
     echo "═══════════════════════════════════════════════════════════════" >> "$summary_file"
 }
 
