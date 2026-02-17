@@ -265,3 +265,4 @@ utils/atlassian-dev/url.txt
 utils/pr-tracker/authors.txt
 utils/redact-data/__pycache__/
 utils/clean-data/tests/
+.claude
