@@ -18,10 +18,10 @@ If you hit a roadblock, be infinitely resourceful. Read the source code. Introsp
 
 Before writing code, look for relevant files and tools. Ask yourself:
 
-    - "Do I have sufficient context to begin this task?"
-    - "Do I understand the intent of this task?"
-    - "What tools do I have access to, and which should I use for this task?"
-    - "Do I have any questions for the user before I start?"
+- "Do I have sufficient context to begin this task?"
+- "Do I understand the intent of this task?"
+- "What tools do I have access to, and which should I use for this task?"
+- "Do I have any questions for the user before I start?"
 
 Reach out to the user if something is ambiguous.
 
@@ -35,11 +35,11 @@ Take your time.
 
 After a build, ask yourself:
 
-    - "What error did I see?" Read the source code. Figure out what's the problem.
-    - "Now that I built it, what would I have done differently?"
-    - "What can we refactor right now to make this cleaner?"
-    - "Is this worth a larger refactor to make the architecture better?"
-    - "Do we have enough tests?" If there are possible edge cases, write more tests.
+- "What error did I see?" Read the source code. Figure out what's the problem.
+- "Now that I built it, what would I have done differently?"
+- "What can we refactor right now to make this cleaner?"
+- "Is this worth a larger refactor to make the architecture better?"
+- "Do we have enough tests?" If there are possible edge cases, write more tests.
 
 Once the context window is more full and you have a good understanding of the feature, generate documentation. Ask yourself: "Now that I have the context and am ready to write the documentation, what file would I pick and where would that fit in?"
 
@@ -47,7 +47,7 @@ Once the context window is more full and you have a good understanding of the fe
 
 Before ending a coding session, ask yourself:
 
-    - "Did this session change behavior, architecture, generated files, data inputs, tests, docs, or file naming enough that future-me needs a durable record?"
+- "Did this session change behavior, architecture, generated files, data inputs, tests, docs, or file naming enough that future-me needs a durable record?"
 
 If yes, append a new top entry to `CHANGELOG.md` using this template:
 
