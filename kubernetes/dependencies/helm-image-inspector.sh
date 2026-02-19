@@ -55,6 +55,28 @@ log() {
     echo -e "${YELLOW}--------------------------------------------------${RESET}"
 }
 
+# Returns the canonical URL for a known New Relic Helm repo alias, or empty string if unknown.
+get_nr_repo_url() {
+    case "$1" in
+        newrelic)                          echo "https://helm-charts.newrelic.com" ;;
+        newrelic-prometheus-configurator)  echo "https://newrelic.github.io/newrelic-prometheus-configurator" ;;
+        k8s-agents-operator)               echo "https://newrelic.github.io/k8s-agents-operator" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Adds a known NR repo if it is not already registered; silently skips on failure.
+ensure_nr_repo_added() {
+    local alias="$1"
+    local url; url=$(get_nr_repo_url "$alias")
+    [ -z "$url" ] && return 1
+    if ! helm repo list 2>/dev/null | grep -q "^${alias}[[:space:]]"; then
+        echo "Adding Helm repository '${alias}' (${url})..." >&2
+        helm repo add "$alias" "$url" >/dev/null 2>&1 || \
+            echo -e "${YELLOW}Warning: Failed to add repo '${alias}'. Skipping.${RESET}" >&2
+    fi
+}
+
 # --- Core Logic ---
 
 # Inspects a chart fetched from a remote Helm repository.
@@ -75,12 +97,20 @@ inspect_from_repo() {
     done
 
     # Silently check and update the repo.
-    if ! helm repo list | grep -q "^$repo\s"; then
-        read -r -p "Helm repository '$repo' not found. Would you like to add the New Relic repository? (y/n) " choice >&2
-        if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-            helm repo add "$repo" "https://helm-charts.newrelic.com" >/dev/null 2>&1
+    if ! helm repo list | grep -q "^${repo}[[:space:]]"; then
+        local known_url; known_url=$(get_nr_repo_url "$repo")
+        if [ -n "$known_url" ]; then
+            echo "Adding Helm repository '$repo' (${known_url})..." >&2
+            if ! helm repo add "$repo" "$known_url" >/dev/null 2>&1; then
+                echo -e "${RED}Error: Failed to add repo '$repo'.${RESET}" >&2; exit 1
+            fi
         else
-            echo "Please add the repo manually and try again." >&2; exit 1
+            read -r -p "Helm repository '$repo' not found. Would you like to add the New Relic repository? (y/n) " choice >&2
+            if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+                helm repo add "$repo" "https://helm-charts.newrelic.com" >/dev/null 2>&1
+            else
+                echo "Please add the repo manually and try again." >&2; exit 1
+            fi
         fi
     fi
     echo "Updating Helm repository '$repo'..." >&2
@@ -198,6 +228,14 @@ inspect_newrelic_interactive() {
     if [ -z "$chart_to_inspect" ]; then echo "No chart selected. Exiting." >&2; exit 1; fi
     
     if [ -z "$version" ]; then
+        # Update the repo so version listings reflect the latest available releases.
+        local repo; repo=$(echo "$chart_to_inspect" | cut -d'/' -f1)
+        echo "Updating Helm repository '$repo'..." >&2
+        update_output_file="$WORK_DIR/update_interactive.out"
+        if ! helm repo update "$repo" > "$update_output_file" 2>&1; then
+            echo -e "${YELLOW}Warning: 'helm repo update' failed for repo '$repo'. Proceeding with cached data.${RESET}" >&2
+        fi
+
         version=$(select_chart_version "$chart_to_inspect")
         if [ -z "$version" ]; then echo "No version selected. Exiting." >&2; exit 1; fi
     fi
@@ -233,23 +271,36 @@ select_helm_release() {
 
 # New: Displays a list of New Relic charts for selection.
 select_newrelic_chart() {
-    echo "Fetching charts from the 'newrelic' Helm repository..." >&2
-    charts_json=$(helm search repo newrelic -o json)
-    if [ -z "$charts_json" ] || [ "$charts_json" == "[]" ]; then
-        echo -e "${RED}No charts found in the 'newrelic' repo.${RESET}" >&2; return 1; fi
+    echo "Fetching charts from New Relic Helm repositories..." >&2
 
-    charts=(); while IFS= read -r line; do charts+=("$line"); done < <(echo "$charts_json" | jq -r '.[] | .name' | \
-        grep '^newrelic/' | \
-        grep -v -e 'newrelic/common-library' -e 'newrelic/agent-control$' -e 'newrelic/simple-nginx' -e 'newrelic/agent-control-deployment' -e 'newrelic/agent-control-cd' -e 'newrelic/agent-control-bootstrap' | \
-        sed 's|^newrelic/||' | \
+    # Register all known New Relic repos if not already present.
+    for nr_repo in newrelic newrelic-prometheus-configurator k8s-agents-operator; do
+        ensure_nr_repo_added "$nr_repo"
+    done
+
+    # Collect full repo/chart paths from each New Relic repo and deduplicate.
+    local all_chart_paths
+    all_chart_paths=$(
+        { helm search repo newrelic -o json 2>/dev/null | jq -r '.[] | .name' 2>/dev/null | grep '^newrelic/'; \
+          helm search repo newrelic-prometheus-configurator -o json 2>/dev/null | jq -r '.[] | .name' 2>/dev/null | grep '^newrelic-prometheus-configurator/'; \
+          helm search repo k8s-agents-operator -o json 2>/dev/null | jq -r '.[] | .name' 2>/dev/null | grep '^k8s-agents-operator/'; } | \
+        sort | uniq
+    )
+    if [ -z "$all_chart_paths" ]; then
+        echo -e "${RED}No charts found in New Relic repos.${RESET}" >&2; return 1; fi
+
+    # charts stores full repo/chart paths; display shows only the chart name portion.
+    charts=(); while IFS= read -r line; do charts+=("$line"); done < <(echo "$all_chart_paths" | \
+        grep -v -e 'newrelic/common-library' -e 'newrelic/agent-control$' -e 'newrelic/simple-nginx' \
+                -e 'newrelic/agent-control-deployment' -e 'newrelic/agent-control-cd' -e 'newrelic/agent-control-bootstrap' | \
         sort | uniq)
 
     echo -e "${BOLD}Please select a New Relic chart to inspect:${RESET}" >&2
-    for i in "${!charts[@]}"; do printf "  ${BOLD}%2d)${RESET} %s\n" "$((i+1))" "${charts[$i]}" >&2; done
+    for i in "${!charts[@]}"; do printf "  ${BOLD}%2d)${RESET} %s\n" "$((i+1))" "${charts[$i]##*/}" >&2; done
 
     local choice; printf "\n${CYAN}Enter number: ${RESET}" >&2; read -r choice
     if [[ $choice =~ ^[0-9]+$ ]] && [ "$choice" -gt 0 ] && [ "$choice" -le "${#charts[@]}" ]; then
-        echo "newrelic/${charts[$((choice-1))]}";
+        echo "${charts[$((choice-1))]}";
     else
         echo -e "${RED}Invalid selection.${RESET}" >&2; return 1;
     fi

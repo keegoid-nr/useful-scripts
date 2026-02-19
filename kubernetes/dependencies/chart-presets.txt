@@ -14,3 +14,5 @@ newrelic/nri-prometheus: --set global.licenseKey=dummy-key --set global.cluster=
 newrelic/nri-statsd: --set global.insightsKey=dummy-key --set global.cluster=dummy-cluster --set accountId=123456
 newrelic/pipeline-control-gateway: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
 newrelic/agent-control-deployment: --set global.licenseKey=dummy-key --set global.cluster=dummy-cluster
+newrelic-prometheus-configurator/newrelic-prometheus-agent: --set licenseKey=dummy-key --set cluster=dummy-cluster
+k8s-agents-operator/k8s-agents-operator: --set licenseKey=dummy-key
