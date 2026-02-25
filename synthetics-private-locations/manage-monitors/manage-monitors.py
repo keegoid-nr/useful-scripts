@@ -16,8 +16,10 @@ Website: github.com/keegoid-nr/useful-scripts
 License: Apache License 2.0
 """
 
+import certifi
 import httpx
 import os
+import ssl
 import sys
 import time
 import json
@@ -103,8 +105,17 @@ def make_nerdgraph_request(query, variables=None):
     if variables:
         payload["variables"] = variables
 
+    # Anchor to certifi's bundle so that SSL_CERT_FILE (an OpenSSL env var that
+    # replaces the default CA store) does not strip out standard CAs like Let's Encrypt.
+    # Then layer any corporate CA (e.g. Cloudflare Gateway) on top so both are trusted.
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    ca_bundle = os.getenv("REQUESTS_CA_BUNDLE") or os.getenv("CURL_CA_BUNDLE")
+    if ca_bundle:
+        ssl_context.load_verify_locations(cafile=ca_bundle)
+    verify = ssl_context
+
     try:
-        with httpx.Client() as client:
+        with httpx.Client(verify=verify) as client:
             response = client.post(NERDGRAPH_URL, headers=headers, json=payload)
             response.raise_for_status()
         result = response.json()
