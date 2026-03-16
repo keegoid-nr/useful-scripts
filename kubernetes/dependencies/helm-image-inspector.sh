@@ -315,16 +315,20 @@ select_chart_version() {
          echo -e "${RED}No versions found for '$chart'.${RESET}" >&2; return 1;
     fi
 
-    # Extract versions (limiting to top 15 to avoid clutter)
-    versions=(); while IFS= read -r line; do versions+=("$line"); done < <(echo "$versions_json" | jq -r '.[].version' | head -n 15)
-    
+    # Extract versions and app versions (limiting to top 15 to avoid clutter)
+    versions=(); app_versions=()
+    while IFS= read -r line; do versions+=("$line"); done < <(echo "$versions_json" | jq -r '.[].version' | head -n 15)
+    while IFS= read -r line; do app_versions+=("$line"); done < <(echo "$versions_json" | jq -r '.[].app_version // ""' | head -n 15)
+
     echo -e "${BOLD}Please select a version for '$chart':${RESET}" >&2
-    
+
     pk=1
-    for i in "${!versions[@]}"; do 
+    for i in "${!versions[@]}"; do
         local label=""
         if [ "$i" -eq 0 ]; then label=" (Latest)"; fi
-        printf "  ${BOLD}%2d)${RESET} %s%s\n" "$pk" "${versions[$i]}" "$label" >&2
+        local app_ver=""
+        if [ -n "${app_versions[$i]}" ]; then app_ver=" ${DIM}(${app_versions[$i]})${RESET}"; fi
+        echo -e "  ${BOLD}$(printf '%2d' "$pk")${RESET}) ${versions[$i]}${app_ver}${label}" >&2
         pk=$((pk+1))
     done
     
