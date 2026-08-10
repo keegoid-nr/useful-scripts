@@ -1,3 +1,9 @@
-httpx
-tqdm
-python-dateutil
+anyio==4.14.2
+certifi==2026.7.22
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.18
+python-dateutil==2.9.0.post0
+six==1.17.0
+tqdm==4.70.0

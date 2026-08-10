@@ -27,7 +27,7 @@ from collections import defaultdict
 from tqdm import tqdm
 
 # --- CONFIGURATION ---
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_TOKEN = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
 REPO_OWNER = "newrelic"
 REPO_NAME = "docs-website"
 

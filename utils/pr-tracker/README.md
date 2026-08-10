@@ -38,7 +38,7 @@ A Python script to track the status (open, merged, unmerged) and size (lines cha
 ## Configuration
 
 1. **Set GitHub Token**
-    Create a system environment variable named `GITHUB_TOKEN` and set its value to your GitHub Personal Access Token. This keeps your token secure and out of the source code.
+    Create a system environment variable named `GITHUB_PERSONAL_ACCESS_TOKEN` and set its value to your GitHub Personal Access Token. This keeps your token secure and out of the source code.
 
     **Note on SSO**: Some organizations, including New Relic, require you to authorize your Personal Access Token for use with SSO. After creating your token, you may need to click "Configure SSO" or "Authorize" next to its name on the [tokens page](https://github.com/settings/tokens) to grant it access.
 
