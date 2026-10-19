@@ -75,7 +75,7 @@ pull_images
 # Create a new pod with port mappings and host entry for Podman API
 # Replace HOST_IP_ADDRESS with the actual IP address of your host
 # If using WSL2 in Windows, access the Linux distribution `wsl -d Ubuntu-24.04` then find the IP address with `ip a s eth0 | grep inet`
-podman pod create --network slirp4netns --name "$SJM_POD_NAME" --add-host=podman.service:"$HOST_IP_ADDRESS" -p 8080:8080 -p 8082:8082
+podman pod create --network slirp4netns --name "$SJM_POD_NAME" --add-host=podman.service:"$HOST_IP_ADDRESS" -p 8080:8080 -p 8082:8082 --shm-size=2g
 
 # Start new job manager to support monitoring activities
 podman run \
